@@ -25,6 +25,7 @@ export type AppState = {
   security: { encryptionAvailable: boolean; platform: string; storageBackend: string | null; reason: string | null; remediation: string | null };
   recovery: { status: "clear" | "recovered" | "recovery-required"; recoveryId?: string; reason?: string };
   store: { mode: "ready" | "read-only" | "recovery-required"; version: number | null; revision: number; reason: string | null; quarantine?: string };
+  recoveries: Array<{ id: string; createdAt: string | null; updatedAt: string | null; status: string; adapter: string | null; targetProfileId: string | null; integrity: "valid" | "invalid" }>;
 };
 
 export type ClaudeSwitcherApi = {
@@ -33,5 +34,8 @@ export type ClaudeSwitcherApi = {
   activate(id: string): Promise<AppState>;
   rename(id: string, alias: string): Promise<AppState>;
   remove(id: string): Promise<AppState>;
+  restore(id: string): Promise<AppState>;
+  exportDiagnostics(): Promise<{ ok: boolean; message: string }>;
+  retryRecovery(): Promise<AppState>;
   openLogin(): Promise<{ ok: boolean; message: string }>;
 };

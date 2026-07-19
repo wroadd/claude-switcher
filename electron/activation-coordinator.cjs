@@ -64,7 +64,7 @@ class ActivationCoordinator {
             throw new ActivationError("CONCURRENT_AUTH_CHANGE", "Claude authentication changed during activation preflight. No switch was performed.", recovery.id);
           }
         }
-        await this.adapter.applyCredentialBundle(target, previous.credentials.source);
+        await this.adapter.applyCredentialBundle(target, previous.credentials.source, previous.credentials.account || null);
         journal.phase = "applied";
         journal.updatedAt = new Date().toISOString();
         await this.store.writeJournal(journal);
@@ -104,6 +104,10 @@ class ActivationCoordinator {
           await this.store.writeJournal(journal);
           await this.adapter.restoreCredentialState(previous);
           await this.failpoint("after-rollback-apply");
+          if (this.adapter.credentialStateMatches) {
+            const restoredState = await this.adapter.captureCredentialState({ requireLogin: false });
+            if (!this.adapter.credentialStateMatches(previous, restoredState)) throw new Error("Previous credential state could not be verified after rollback.");
+          }
           const restored = await this.adapter.getClaudeStatus();
           if (previous.status?.loggedIn && !this.adapter.identityMatches(previous.status, restored)) {
             throw new Error("Previous Claude identity could not be verified after rollback.");
@@ -149,6 +153,10 @@ class ActivationCoordinator {
       }
       const recovery = await this.store.readRecoveryRecord(journal.recoveryId);
       await this.adapter.restoreCredentialState(recovery.state);
+      if (this.adapter.credentialStateMatches) {
+        const restoredState = await this.adapter.captureCredentialState({ requireLogin: false });
+        if (!this.adapter.credentialStateMatches(recovery.state, restoredState)) throw new Error("Recovered credential state could not be verified.");
+      }
       const actual = await this.adapter.getClaudeStatus();
       if (recovery.state.status?.loggedIn && !this.adapter.identityMatches(recovery.state.status, actual)) {
         throw new Error("Recovered identity could not be verified.");
@@ -161,6 +169,79 @@ class ActivationCoordinator {
       await this.store.updateRecoveryStatus(journal.recoveryId, "rollback-failed").catch(() => {});
       return { status: "recovery-required", recoveryId: journal.recoveryId, reason: "RECOVERY_FAILED" };
     }
+  }
+
+  async restore(recoveryId) {
+    return this.serialized(async () => {
+      await this.ensureClear();
+      if (await this.store.readJournal()) throw new ActivationError("RECOVERY_REQUIRED", "An interrupted activation must be resolved before restoring another recovery point.");
+      const historical = await this.store.readRecoveryRecord(recoveryId);
+      const metadata = await this.store.metadata();
+      let restoredProfileId = null;
+      for (const account of metadata.accounts) {
+        const bundle = await this.store.secret(account.id);
+        if (this.adapter.identityMatches(bundle.status, historical.state.status)) { restoredProfileId = account.id; break; }
+      }
+      if (!restoredProfileId) throw new ActivationError("RECOVERY_PROFILE_MISSING", "The recovery identity no longer has a saved profile. No change was made.", recoveryId);
+
+      const previous = await this.adapter.captureCredentialState({ requireLogin: false });
+      const previousActiveId = metadata.accounts.find((account) => account.active)?.id || null;
+      const transactionId = crypto.randomUUID();
+      const safety = await this.store.createRecoveryRecord({
+        transactionId, targetProfileId: restoredProfileId,
+        adapter: previous.credentials.source, state: previous,
+      });
+      const journal = {
+        transactionId, recoveryId: safety.id, sourceRecoveryId: recoveryId,
+        targetProfileId: restoredProfileId, previousActiveId,
+        adapter: previous.credentials.source, phase: "prepared", updatedAt: new Date().toISOString(),
+      };
+      await this.store.writeJournal(journal);
+      let metadataCommitted = false;
+      try {
+        await this.adapter.restoreCredentialState(historical.state);
+        if (this.adapter.credentialStateMatches) {
+          const appliedState = await this.adapter.captureCredentialState({ requireLogin: false });
+          if (!this.adapter.credentialStateMatches(historical.state, appliedState)) throw new Error("Restored credential state could not be verified.");
+        }
+        journal.phase = "applied";
+        journal.updatedAt = new Date().toISOString();
+        await this.store.writeJournal(journal);
+        const actual = await this.adapter.getClaudeStatus();
+        if (!this.adapter.identityMatches(historical.state.status, actual)) throw new ActivationError("IDENTITY_VERIFICATION_FAILED", "Claude Code did not report the restored identity.", safety.id);
+        journal.phase = "verified";
+        journal.updatedAt = new Date().toISOString();
+        await this.store.writeJournal(journal);
+        await this.store.markActive(restoredProfileId, { transactionId, recoveryId: safety.id, sourceRecoveryId: recoveryId });
+        metadataCommitted = true;
+        journal.phase = "metadata-committed";
+        journal.updatedAt = new Date().toISOString();
+        await this.store.writeJournal(journal);
+        await this.store.updateRecoveryStatus(safety.id, "committed");
+        await this.store.clearJournal();
+        return { transactionId, recoveryId: safety.id, restoredFrom: recoveryId };
+      } catch (cause) {
+        try {
+          await this.adapter.restoreCredentialState(previous);
+          if (this.adapter.credentialStateMatches) {
+            const restoredState = await this.adapter.captureCredentialState({ requireLogin: false });
+            if (!this.adapter.credentialStateMatches(previous, restoredState)) throw new Error("Previous credential state could not be verified.");
+          }
+          const actual = await this.adapter.getClaudeStatus();
+          if (previous.status?.loggedIn && !this.adapter.identityMatches(previous.status, actual)) throw new Error("Previous identity could not be verified.");
+          if (metadataCommitted && previousActiveId) await this.store.markActive(previousActiveId, { transactionId, recoveryId: safety.id, restoreRollback: true });
+          await this.store.updateRecoveryStatus(safety.id, "rolled-back");
+          await this.store.clearJournal();
+          throw new ActivationError(cause.code || "RESTORE_FAILED", `Restore failed and the previous login was restored. Recovery ID: ${safety.id}`, safety.id);
+        } catch (rollbackError) {
+          if (rollbackError instanceof ActivationError && rollbackError.message.includes("was restored")) throw rollbackError;
+          await this.store.updateRecoveryStatus(safety.id, "rollback-failed").catch(() => {});
+          journal.phase = "recovery-required";
+          await this.store.writeJournal(journal).catch(() => {});
+          throw new ActivationError("ROLLBACK_FAILED", `Restore failed and automatic recovery could not be verified. Recovery ID: ${safety.id}`, safety.id);
+        }
+      }
+    });
   }
 }
 

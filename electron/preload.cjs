@@ -6,5 +6,8 @@ contextBridge.exposeInMainWorld("claudeSwitcher", Object.freeze({
   activate: (id) => ipcRenderer.invoke("account:activate", { id }),
   rename: (id, alias) => ipcRenderer.invoke("account:rename", { id, alias }),
   remove: (id) => ipcRenderer.invoke("account:remove", { id }),
+  restore: (id) => ipcRenderer.invoke("recovery:restore", { id }),
+  exportDiagnostics: () => ipcRenderer.invoke("diagnostics:export", {}),
+  retryRecovery: () => ipcRenderer.invoke("recovery:retry", {}),
   openLogin: () => ipcRenderer.invoke("auth:login", {}),
 }));

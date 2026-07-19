@@ -13,6 +13,7 @@ let demoState: AppState = {
   security: { encryptionAvailable: true, platform: "browser preview", storageBackend: null, reason: null, remediation: null },
   recovery: { status: "clear" },
   store: { mode: "ready", version: 2, revision: 0, reason: null },
+  recoveries: [],
 };
 
 const clone = () => structuredClone(demoState);
@@ -38,5 +39,8 @@ export const demoApi: ClaudeSwitcherApi = {
     demoState.accounts = demoState.accounts.filter((account) => account.id !== id);
     return clone();
   },
+  async restore() { return clone(); },
+  async exportDiagnostics() { return { ok: false, message: "Diagnostics export is unavailable in browser preview mode." }; },
+  async retryRecovery() { return clone(); },
   async openLogin() { return { ok: true, message: "Login launch is disabled in browser preview mode." }; },
 };

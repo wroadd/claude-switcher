@@ -84,6 +84,8 @@ See [SECURITY.md](SECURITY.md) for the threat model and reporting process.
 - [Codex Switcher feature parity map](docs/FEATURE_PARITY.md)
 - [Groundtruth audit](docs/GROUNDTRUTH_AUDIT.md)
 - [Threat model](docs/THREAT_MODEL.md)
+- [Recovery runbook](docs/RECOVERY.md)
+- [Compatibility matrix](docs/COMPATIBILITY.md)
 - [Development guide](docs/DEVELOPMENT.md)
 - [Product roadmap](docs/ROADMAP.md)
 - [Project management](docs/PROJECT_MANAGEMENT.md)

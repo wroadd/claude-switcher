@@ -7,6 +7,10 @@ const RECOVERY_VERSION = 1;
 const MAX_ACTIVITY = 100;
 const MAX_ACCOUNTS = 100;
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
+const MAX_RECOVERY_PLAINTEXT_BYTES = 24 * 1024 * 1024;
+const MAX_RECOVERY_FILE_BYTES = 40 * 1024 * 1024;
+const RECOVERY_ID = /^[a-zA-Z0-9_.-]{1,200}$/;
+const JOURNAL_PHASES = new Set(["prepared", "applied", "verified", "metadata-committed", "rolling-back", "recovery-required"]);
 
 function emptyState() {
   return {
@@ -104,17 +108,17 @@ class ProfileStore {
   async atomicJson(file, value) {
     await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
     const temp = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
-    const handle = await fs.open(temp, "wx", 0o600);
+    let handle;
     try {
+      handle = await fs.open(temp, "wx", 0o600);
       await handle.writeFile(`${JSON.stringify(value, null, 2)}\n`, "utf8");
       await handle.sync();
-    } finally {
       await handle.close();
-    }
-    try {
+      handle = null;
       await fs.rename(temp, file);
       await fs.chmod(file, 0o600).catch(() => {});
     } catch (error) {
+      if (handle) await handle.close().catch(() => {});
       await fs.unlink(temp).catch(() => {});
       throw error;
     }
@@ -148,6 +152,14 @@ class ProfileStore {
     }));
     state.activity = Array.isArray(metadata.activity) ? metadata.activity.slice(0, MAX_ACTIVITY) : [];
     state.entries = { ...vault.entries };
+    for (const encrypted of Object.values(state.entries)) {
+      if (typeof encrypted !== "string") throw new Error("Invalid legacy credential snapshot.");
+      const bundle = JSON.parse(this.safeStorage.decryptString(Buffer.from(encrypted, "base64")));
+      if (!isObject(bundle) || !isObject(bundle.credentials) || typeof bundle.credentials.value !== "string" || !isObject(bundle.status) || (!bundle.status.email && !bundle.status.orgId)) {
+        throw new Error("Legacy credential snapshot failed validation.");
+      }
+      JSON.parse(bundle.credentials.value);
+    }
     validateState(state);
     await this.atomicJson(this.storePath, state);
     await fs.unlink(this.legacyMetadataPath).catch((error) => { if (error.code !== "ENOENT") throw error; });
@@ -315,7 +327,9 @@ class ProfileStore {
     if (!this.encryptionAvailable()) throw new Error("OS-backed encryption is required for recovery records.");
     const id = `${new Date().toISOString().replace(/[:.]/g, "-")}-${transactionId}`;
     const dir = path.join(this.backupRoot, id);
-    const ciphertext = this.safeStorage.encryptString(JSON.stringify(state)).toString("base64");
+    const plaintext = JSON.stringify(state);
+    if (Buffer.byteLength(plaintext) > MAX_RECOVERY_PLAINTEXT_BYTES) throw new Error("Recovery state exceeds the safe size limit.");
+    const ciphertext = this.safeStorage.encryptString(plaintext).toString("base64");
     const recovery = { version: RECOVERY_VERSION, ciphertext };
     const manifest = {
       version: RECOVERY_VERSION, id, transactionId, targetProfileId, adapter,
@@ -328,19 +342,50 @@ class ProfileStore {
   }
 
   async readRecoveryRecord(id) {
-    if (!/^[a-zA-Z0-9_.-]{1,200}$/.test(id)) throw new Error("Invalid recovery identifier.");
+    if (!RECOVERY_ID.test(id)) throw new Error("Invalid recovery identifier.");
     const dir = path.join(this.backupRoot, id);
-    const manifest = await this.readJson(path.join(dir, "manifest.json"), null);
-    const recovery = await this.readJson(path.join(dir, "recovery.json"), null);
-    if (!manifest || manifest.version !== RECOVERY_VERSION || !recovery || recovery.version !== RECOVERY_VERSION) {
+    const manifest = await this.readJson(path.join(dir, "manifest.json"), null, MAX_RECOVERY_FILE_BYTES);
+    const recovery = await this.readJson(path.join(dir, "recovery.json"), null, MAX_RECOVERY_FILE_BYTES);
+    if (!manifest || manifest.version !== RECOVERY_VERSION || manifest.id !== id || !recovery || recovery.version !== RECOVERY_VERSION || typeof recovery.ciphertext !== "string") {
       throw new Error("Recovery record is incomplete or unsupported.");
     }
     const actual = crypto.createHash("sha256").update(recovery.ciphertext).digest("hex");
     if (actual !== manifest.sha256) throw new Error("Recovery record integrity check failed.");
-    return { manifest, state: JSON.parse(this.safeStorage.decryptString(Buffer.from(recovery.ciphertext, "base64"))) };
+    const state = JSON.parse(this.safeStorage.decryptString(Buffer.from(recovery.ciphertext, "base64")));
+    if (!isObject(state) || !isObject(state.credentials) || !["macos-keychain", "credentials-file"].includes(state.credentials.source) || typeof state.credentials.present !== "boolean" || (state.credentials.present && typeof state.credentials.value !== "string") || !isObject(state.rootConfig)) {
+      throw new Error("Recovery payload failed validation.");
+    }
+    return { manifest, state };
+  }
+
+  async listRecoveryRecords() {
+    const entries = await fs.readdir(this.backupRoot, { withFileTypes: true }).catch((error) => {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    });
+    const records = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory() || !RECOVERY_ID.test(entry.name)) continue;
+      try {
+        const dir = path.join(this.backupRoot, entry.name);
+        const manifest = await this.readJson(path.join(dir, "manifest.json"), null, MAX_RECOVERY_FILE_BYTES);
+        const recovery = await this.readJson(path.join(dir, "recovery.json"), null, MAX_RECOVERY_FILE_BYTES);
+        if (!manifest || manifest.id !== entry.name || !recovery || manifest.version !== RECOVERY_VERSION || recovery.version !== RECOVERY_VERSION) throw new Error("incomplete");
+        const actual = crypto.createHash("sha256").update(recovery.ciphertext).digest("hex");
+        records.push({
+          id: manifest.id, createdAt: manifest.createdAt, updatedAt: manifest.updatedAt || null,
+          status: manifest.status, adapter: manifest.adapter, targetProfileId: manifest.targetProfileId,
+          integrity: actual === manifest.sha256 ? "valid" : "invalid",
+        });
+      } catch {
+        records.push({ id: entry.name, createdAt: null, updatedAt: null, status: "invalid", adapter: null, targetProfileId: null, integrity: "invalid" });
+      }
+    }
+    return records.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
   }
 
   async updateRecoveryStatus(id, status) {
+    if (!RECOVERY_ID.test(id)) throw new Error("Invalid recovery identifier.");
     const allowed = new Set(["ready", "committed", "rolled-back", "rollback-failed"]);
     if (!allowed.has(status)) throw new Error("Invalid recovery status.");
     const file = path.join(this.backupRoot, id, "manifest.json");
@@ -351,8 +396,17 @@ class ProfileStore {
     await this.atomicJson(file, manifest);
   }
 
-  async writeJournal(journal) { this.assertWritable(); await this.atomicJson(this.journalPath, { version: 1, ...journal }); }
-  async readJournal() { return this.readJson(this.journalPath, null); }
+  validateJournal(journal) {
+    if (!isObject(journal) || journal.version !== 1 || !RECOVERY_ID.test(journal.transactionId) || !RECOVERY_ID.test(journal.recoveryId) || !RECOVERY_ID.test(journal.targetProfileId) || !JOURNAL_PHASES.has(journal.phase)) throw new Error("Activation journal is invalid.");
+    if (journal.previousActiveId !== null && journal.previousActiveId !== undefined && !RECOVERY_ID.test(journal.previousActiveId)) throw new Error("Activation journal previous profile is invalid.");
+    if (journal.sourceRecoveryId !== undefined && !RECOVERY_ID.test(journal.sourceRecoveryId)) throw new Error("Activation journal source recovery is invalid.");
+    return journal;
+  }
+  async writeJournal(journal) { this.assertWritable(); await this.atomicJson(this.journalPath, this.validateJournal({ version: 1, ...journal })); }
+  async readJournal() {
+    const journal = await this.readJson(this.journalPath, null);
+    return journal ? this.validateJournal(journal) : null;
+  }
   async clearJournal() { await fs.unlink(this.journalPath).catch((error) => { if (error.code !== "ENOENT") throw error; }); }
 }
 

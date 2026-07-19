@@ -6,6 +6,8 @@ test("IPC contracts normalize expected envelopes", () => {
   assert.deepEqual(parseRequest(CHANNELS.capture, { alias: "  Work  " }), { alias: "Work" });
   assert.deepEqual(parseRequest(CHANNELS.rename, { id: "profile-1", alias: "Home" }), { id: "profile-1", alias: "Home" });
   assert.deepEqual(parseRequest(CHANNELS.state, {}), {});
+  assert.deepEqual(parseRequest(CHANNELS.restore, { id: "2026-07-19-recovery.id" }), { id: "2026-07-19-recovery.id" });
+  assert.deepEqual(parseRequest(CHANNELS.retryRecovery, {}), {});
 });
 
 test("IPC contracts reject coercion, unknown fields, controls, and hostile IDs", () => {

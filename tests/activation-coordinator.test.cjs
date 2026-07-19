@@ -14,7 +14,7 @@ const safeStorage = {
 };
 
 function bundle(email, marker) {
-  return { credentials: { source: "credentials-file", value: JSON.stringify({ synthetic: marker }) }, oauthAccount: null, userID: null, status: { loggedIn: true, email, authMethod: "claude.ai", subscriptionType: "max", orgId: null } };
+  return { credentials: { source: "credentials-file", present: true, account: null, value: JSON.stringify({ synthetic: marker }), mode: 0o600 }, oauthAccount: null, userID: null, status: { loggedIn: true, email, authMethod: "claude.ai", subscriptionType: "max", orgId: null } };
 }
 
 async function fixture(t) {
@@ -30,10 +30,11 @@ async function fixture(t) {
   const adapter = {
     probeClaudeProcesses: async () => ({ status: "clear" }),
     captureCredentialState: async () => structuredClone(current),
-    applyCredentialBundle: async (target, source) => { current = { credentials: { source, value: target.credentials.value }, rootConfig: {}, status: target.status }; },
+    applyCredentialBundle: async (target, source) => { current = { credentials: { ...target.credentials, source }, rootConfig: {}, status: target.status }; },
     restoreCredentialState: async (state) => { current = structuredClone(state); },
     getClaudeStatus: async () => current.status,
     identityMatches,
+    credentialStateMatches: (expected, actual) => JSON.stringify(expected) === JSON.stringify(actual),
   };
   return { dir, store, adapter, previousId, targetId, current: () => current };
 }
@@ -47,6 +48,33 @@ test("activation commits metadata only after identity verification", async (t) =
   assert.equal(await f.store.readJournal(), null);
   const disk = await fs.readFile(path.join(f.dir, "backups", result.recoveryId, "recovery.json"), "utf8");
   assert.equal(disk.includes("previous-canary"), false);
+});
+
+test("startup rolls back an interrupted applied journal", async (t) => {
+  const f = await fixture(t);
+  const previous = structuredClone(f.current());
+  const transactionId = "00000000-0000-4000-8000-000000000001";
+  const record = await f.store.createRecoveryRecord({ transactionId, targetProfileId: f.targetId, adapter: "credentials-file", state: previous });
+  await f.store.writeJournal({ transactionId, recoveryId: record.id, targetProfileId: f.targetId, previousActiveId: f.previousId, adapter: "credentials-file", phase: "applied", updatedAt: new Date().toISOString() });
+  await f.adapter.applyCredentialBundle(await f.store.secret(f.targetId), "credentials-file");
+  const result = await new ActivationCoordinator({ store: f.store, adapter: f.adapter }).recoverPending();
+  assert.equal(result.status, "recovered");
+  assert.equal(f.current().status.email, "previous@example.com");
+  assert.equal(await f.store.readJournal(), null);
+});
+
+test("startup finalizes a verified metadata commit instead of rolling it back", async (t) => {
+  const f = await fixture(t);
+  const previous = structuredClone(f.current());
+  const transactionId = "00000000-0000-4000-8000-000000000002";
+  const record = await f.store.createRecoveryRecord({ transactionId, targetProfileId: f.targetId, adapter: "credentials-file", state: previous });
+  await f.adapter.applyCredentialBundle(await f.store.secret(f.targetId), "credentials-file");
+  await f.store.markActive(f.targetId);
+  await f.store.writeJournal({ transactionId, recoveryId: record.id, targetProfileId: f.targetId, previousActiveId: f.previousId, adapter: "credentials-file", phase: "metadata-committed", updatedAt: new Date().toISOString() });
+  const result = await new ActivationCoordinator({ store: f.store, adapter: f.adapter }).recoverPending();
+  assert.equal(result.status, "recovered");
+  assert.equal(f.current().status.email, "target@example.com");
+  assert.equal((await f.store.readRecoveryRecord(record.id)).manifest.status, "committed");
 });
 
 test("failure after credential apply restores previous identity and active metadata", async (t) => {
@@ -72,4 +100,18 @@ test("post-commit interruption finalizes a verified activation", async (t) => {
   assert.ok(result.recoveryId);
   assert.equal((await f.store.metadata()).accounts.find((item) => item.active).id, f.targetId);
   assert.equal(await f.store.readJournal(), null);
+});
+
+test("manual recovery restore first backs up current state and activates matching profile", async (t) => {
+  const f = await fixture(t);
+  const coordinator = new ActivationCoordinator({ store: f.store, adapter: f.adapter });
+  const activation = await coordinator.activate(f.targetId);
+  assert.equal(f.current().status.email, "target@example.com");
+  const restored = await coordinator.restore(activation.recoveryId);
+  assert.equal(restored.restoredFrom, activation.recoveryId);
+  assert.equal(f.current().status.email, "previous@example.com");
+  assert.equal((await f.store.metadata()).accounts.find((item) => item.active).id, f.previousId);
+  const records = await f.store.listRecoveryRecords();
+  assert.equal(records.every((item) => item.integrity === "valid"), true);
+  assert.equal(records.length, 2);
 });

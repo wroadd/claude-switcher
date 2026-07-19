@@ -40,6 +40,12 @@ Version-1 `profiles.json` and `vault.json` are migrated into the consolidated st
 7. Commit active-profile metadata last, mark recovery committed, and remove the journal.
 8. On failure, restore exact prior file bytes/permissions or Keychain value, verify the previous identity, and record rollback. Unverifiable rollback retains the journal and blocks mutations.
 
+Manual restore uses the same coordinator. It first creates a recovery point for the current state, validates/decrypts the selected historical record, requires a matching saved profile, applies and verifies it, then commits the matching active metadata.
+
+## Diagnostics boundary
+
+The renderer can request an export but cannot provide a filesystem path. The main process opens a native save dialog and passes an allowlisted metadata projection to the diagnostics module. Profile IDs, aliases, and any internal paths are HMAC-pseudonymized; full emails, credentials, vault/recovery content, raw command output, and unknown error text are structurally excluded. A final content scan and size limit run before an atomic permission-restricted write. No network sharing occurs.
+
 ## Platform behavior
 
 - **macOS:** OAuth credentials are read from and written to the `Claude Code-credentials` generic-password item in Keychain when available.

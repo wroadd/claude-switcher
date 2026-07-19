@@ -1,6 +1,9 @@
 const CHANNELS = Object.freeze({
   state: "state:get", capture: "account:capture", activate: "account:activate",
   rename: "account:rename", remove: "account:remove", login: "auth:login",
+  restore: "recovery:restore",
+  diagnostics: "diagnostics:export",
+  retryRecovery: "recovery:retry",
 });
 
 function exactObject(value, keys) {
@@ -25,9 +28,9 @@ function id(value) {
 }
 
 function parseRequest(channel, value) {
-  if (channel === CHANNELS.state || channel === CHANNELS.login) { exactObject(value, []); return {}; }
+  if (channel === CHANNELS.state || channel === CHANNELS.login || channel === CHANNELS.diagnostics || channel === CHANNELS.retryRecovery) { exactObject(value, []); return {}; }
   if (channel === CHANNELS.capture) { exactObject(value, ["alias"]); return { alias: alias(value.alias) }; }
-  if (channel === CHANNELS.activate || channel === CHANNELS.remove) { exactObject(value, ["id"]); return { id: id(value.id) }; }
+  if (channel === CHANNELS.activate || channel === CHANNELS.remove || channel === CHANNELS.restore) { exactObject(value, ["id"]); return { id: id(value.id) }; }
   if (channel === CHANNELS.rename) { exactObject(value, ["id", "alias"]); return { id: id(value.id), alias: alias(value.alias) }; }
   throw contractError("UNKNOWN_CHANNEL", "Unknown operation.");
 }
