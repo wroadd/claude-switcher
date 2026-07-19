@@ -18,6 +18,7 @@ pnpm dev               run Vite and Electron in development mode
 pnpm test              run Node unit tests
 pnpm build             type-check and build the renderer
 pnpm check             run tests and build
+pnpm smoke:electron    launch an isolated Electron renderer/main-process smoke
 pnpm dist              package the current platform
 ```
 

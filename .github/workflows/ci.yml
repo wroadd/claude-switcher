@@ -14,7 +14,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: ubuntu-latest
+            smoke: xvfb-run -a pnpm smoke:electron
+          - os: macos-latest
+            smoke: pnpm smoke:electron
+          - os: windows-latest
+            smoke: pnpm smoke:electron
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     env:
@@ -28,3 +34,4 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      - run: ${{ matrix.smoke }}

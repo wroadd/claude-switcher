@@ -189,6 +189,12 @@ if (hasLock) app.whenReady().then(async () => {
   const target = createWindow();
   registerIpc();
   await loadWindow(target);
+  if (process.env.CLAUDE_SWITCHER_SMOKE === "1") {
+    const preferences = mainWindow.webContents.getLastWebPreferences();
+    if (!preferences.contextIsolation || preferences.nodeIntegration || !preferences.sandbox) throw new Error("Electron security preferences failed smoke validation.");
+    console.log("CLAUDE_SWITCHER_SMOKE_OK");
+    app.quit();
+  }
 }).catch((error) => {
   console.error("Claude Switcher failed to initialize safely:", error?.code || "INITIALIZATION_FAILED");
   app.quit();
