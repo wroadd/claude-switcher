@@ -87,6 +87,7 @@ class ActivationCoordinator {
         await this.failpoint("after-metadata-commit");
         await this.store.updateRecoveryStatus(recovery.id, "committed");
         await this.store.clearJournal();
+        await this.store.pruneRecoveryRecords();
         return { transactionId, recoveryId: recovery.id };
       } catch (cause) {
         if (cause?.code === "CONCURRENT_AUTH_CHANGE") throw cause;
@@ -219,6 +220,7 @@ class ActivationCoordinator {
         await this.store.writeJournal(journal);
         await this.store.updateRecoveryStatus(safety.id, "committed");
         await this.store.clearJournal();
+        await this.store.pruneRecoveryRecords();
         return { transactionId, recoveryId: safety.id, restoredFrom: recoveryId };
       } catch (cause) {
         try {

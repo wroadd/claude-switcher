@@ -10,6 +10,7 @@ const emptyState: AppState = {
   recovery: { status: "clear" },
   store: { mode: "ready", version: 2, revision: 0, reason: null },
   recoveries: [],
+  preferences: { recoveryRetention: 20 },
 };
 
 const unavailableApi = new Proxy({}, { get: () => async () => { throw new Error("The native security bridge is unavailable. No account operation was performed."); } }) as ClaudeSwitcherApi;
@@ -74,6 +75,35 @@ function AddAccount({ onClose, onCapture, onOpenLogin, busy, loggedIn }: {
   </div>;
 }
 
+function SettingsView({ state, busy, blocked, onExport, onRestore, onRetention }: {
+  state: AppState; busy: boolean; blocked: boolean;
+  onExport(): void; onRestore(id: string): void; onRetention(value: number): void;
+}) {
+  return <>
+    <div className="page-heading">
+      <div><h1>Settings</h1><p>Security and runtime information for this installation.</p></div>
+      <button className="secondary" disabled={busy} onClick={onExport}>Export diagnostics</button>
+    </div>
+    <section className="settings-page">
+      <div><span>Credential encryption</span><strong>{state.security.encryptionAvailable ? "Available" : "Unavailable"}</strong></div>
+      <div><span>Storage backend</span><strong>{state.security.storageBackend ?? "Operating system default"}</strong></div>
+      <div><span>Platform</span><strong>{state.security.platform}</strong></div>
+      <div><span>Store schema</span><strong>{state.store.version ? `v${state.store.version}, revision ${state.store.revision}` : state.store.mode}</strong></div>
+      <div><span>Claude CLI</span><strong>{state.claude.version ?? "Not detected"}</strong></div>
+      <div><label htmlFor="recovery-retention">Recovery retention</label><select id="recovery-retention" disabled={busy || blocked} value={state.preferences.recoveryRetention} onChange={(event) => onRetention(Number(event.target.value))}>{[5, 10, 20, 50, 100].map((value) => <option key={value} value={value}>{value} points</option>)}</select></div>
+      {state.security.remediation && <p>{state.security.remediation}</p>}
+      <p>Claude Switcher stores encrypted credential snapshots and recovery records in Electron's OS-backed secure storage. Activation is verified and automatically rolled back on failure.</p>
+    </section>
+    <section className="recent">
+      <h2>Recovery points</h2>
+      {state.recoveries.length ? state.recoveries.slice(0, 10).map((item) => <div className="activity-row" key={item.id}>
+        <LockKeyhole /><span><strong>{item.createdAt ? new Date(item.createdAt).toLocaleString() : "Invalid recovery"}</strong> {item.status} · {item.integrity}</span>
+        <button className="secondary" disabled={busy || blocked || !state.security.encryptionAvailable || item.integrity !== "valid"} onClick={() => onRestore(item.id)}>Restore</button>
+      </div>) : <div className="activity-empty"><LockKeyhole /><span><strong>No recovery points</strong>They are created before account activation.</span></div>}
+    </section>
+  </>;
+}
+
 export default function App() {
   const [state, setState] = useState<AppState>(emptyState);
   const [tab, setTab] = useState<"accounts" | "activity" | "settings">("accounts");
@@ -115,6 +145,10 @@ export default function App() {
     catch (error) { setNotice(error instanceof Error ? error.message : String(error)); }
     finally { setBusy(false); }
   };
+  const restoreRecovery = (id: string) => {
+    if (window.confirm("Restore this recovery point? The current state will be backed up first.")) void run(() => api.restore(id), "Recovery point restored.");
+  };
+  const setRecoveryRetention = (value: number) => { void run(() => api.setRecoveryRetention(value), "Recovery retention updated."); };
 
   return <main className="app-shell">
     <header className="titlebar"><Logo /><span className="titlebar-note">Local account manager</span></header>
@@ -144,7 +178,7 @@ export default function App() {
         <section className="recent"><h2>Recent activity</h2>{state.activity.length ? state.activity.slice(0, 4).map((item) => <div className="activity-row" key={item.id}><Clock3 /><span><strong>{item.alias}</strong> {item.type}</span><time>{relativeTime(item.at)}</time></div>) : <div className="activity-empty"><Clock3 /><span><strong>No recent activity</strong>Account switches will appear here.</span></div>}</section>
       </>}
       {tab === "activity" && <><div className="page-heading"><div><h1>Activity</h1><p>A local audit trail of account profile actions.</p></div></div><section className="activity-page">{state.activity.length ? state.activity.map((item) => <div className="activity-row" key={item.id}><Clock3 /><span><strong>{item.alias}</strong> {item.type}</span><time>{new Date(item.at).toLocaleString()}</time></div>) : <div className="empty"><ActivityIcon /><strong>No activity recorded</strong><span>Your profile actions will be recorded locally.</span></div>}</section></>}
-      {tab === "settings" && <><div className="page-heading"><div><h1>Settings</h1><p>Security and runtime information for this installation.</p></div><button className="secondary" disabled={busy} onClick={exportDiagnostics}>Export diagnostics</button></div><section className="settings-page"><div><span>Credential encryption</span><strong>{state.security.encryptionAvailable ? "Available" : "Unavailable"}</strong></div><div><span>Storage backend</span><strong>{state.security.storageBackend ?? "Operating system default"}</strong></div><div><span>Platform</span><strong>{state.security.platform}</strong></div><div><span>Store schema</span><strong>{state.store.version ? `v${state.store.version}, revision ${state.store.revision}` : state.store.mode}</strong></div><div><span>Claude CLI</span><strong>{state.claude.version ?? "Not detected"}</strong></div>{state.security.remediation && <p>{state.security.remediation}</p>}<p>Claude Switcher stores encrypted credential snapshots and recovery records in Electron's OS-backed secure storage. Activation is verified and automatically rolled back on failure.</p></section><section className="recent"><h2>Recovery points</h2>{state.recoveries.length ? state.recoveries.slice(0, 10).map((item) => <div className="activity-row" key={item.id}><LockKeyhole /><span><strong>{item.createdAt ? new Date(item.createdAt).toLocaleString() : "Invalid recovery"}</strong> {item.status} · {item.integrity}</span><button className="secondary" disabled={busy || mutationsBlocked || item.integrity !== "valid"} onClick={() => { if (window.confirm("Restore this recovery point? The current state will be backed up first.")) void run(() => api.restore(item.id), "Recovery point restored."); }}>Restore</button></div>) : <div className="activity-empty"><LockKeyhole /><span><strong>No recovery points</strong>They are created before account activation.</span></div>}</section></>}
+      {tab === "settings" && <SettingsView state={state} busy={busy} blocked={mutationsBlocked} onExport={exportDiagnostics} onRestore={restoreRecovery} onRetention={setRecoveryRetention} />}
     </section>
     {addOpen && <AddAccount onClose={() => setAddOpen(false)} onCapture={capture} onOpenLogin={openLogin} busy={busy || mutationsBlocked} loggedIn={state.claude.loggedIn} />}
   </main>;

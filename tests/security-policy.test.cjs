@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { assessSecureStorage } = require("../electron/secure-storage-policy.cjs");
-const { rendererTarget, authorizeSender } = require("../electron/window-policy.cjs");
+const { rendererTarget, authorizeSender, configureWindowSecurity } = require("../electron/window-policy.cjs");
 
 test("Linux rejects basic_text and accepts supported secret stores", () => {
   assert.equal(assessSecureStorage({ platform: "linux", encryptionAvailable: true, backend: "basic_text" }).usable, false);
@@ -9,6 +9,33 @@ test("Linux rejects basic_text and accepts supported secret stores", () => {
     assert.equal(assessSecureStorage({ platform: "linux", encryptionAvailable: true, backend }).usable, true);
   }
   assert.equal(assessSecureStorage({ platform: "darwin", encryptionAvailable: false }).usable, false);
+});
+
+test("window security installs deny hooks and strict packaged CSP", () => {
+  const listeners = new Map();
+  let openHandler;
+  let permissionCheck;
+  let permissionRequest;
+  let headersHandler;
+  const contents = {
+    setWindowOpenHandler: (handler) => { openHandler = handler; },
+    on: (name, handler) => listeners.set(name, handler),
+    session: {
+      setPermissionCheckHandler: (handler) => { permissionCheck = handler; },
+      setPermissionRequestHandler: (handler) => { permissionRequest = handler; },
+      webRequest: { onHeadersReceived: (handler) => { headersHandler = handler; } },
+    },
+  };
+  configureWindowSecurity(contents, { packaged: true });
+  assert.deepEqual(openHandler(), { action: "deny" });
+  for (const eventName of ["will-navigate", "will-frame-navigate", "will-attach-webview"]) {
+    let prevented = false;
+    listeners.get(eventName)({ preventDefault: () => { prevented = true; } });
+    assert.equal(prevented, true);
+  }
+  assert.equal(permissionCheck(), false);
+  permissionRequest(null, null, (allowed) => assert.equal(allowed, false));
+  headersHandler({ responseHeaders: {} }, (result) => assert.match(result.responseHeaders["Content-Security-Policy"][0], /connect-src 'none'/));
 });
 
 test("packaged renderer ignores development URL and development URL is exact", () => {

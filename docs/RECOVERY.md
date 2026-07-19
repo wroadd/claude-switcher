@@ -21,6 +21,8 @@ Do not delete the recovery directory or edit Claude configuration while collecti
 
 Settings lists metadata-only recovery points and their integrity state. A valid recovery can be restored explicitly. Claude Switcher first creates a new encrypted snapshot of the current state, applies the selected recovery, verifies its identity, and activates the matching saved profile. Invalid records and recoveries whose profile was removed cannot be restored automatically.
 
+Recovery retention is configurable from 5 to 100 points (default 20). Pruning considers only integrity-valid terminal `committed` or `rolled-back` records, keeps the newest configured count, and never automatically deletes unresolved, rollback-failed, or invalid records.
+
 ## Redacted diagnostics
 
 **Export diagnostics** opens a native save dialog. The generated JSON contains bounded application/runtime metadata, pseudonymous profile/event references, stable error codes, and capability flags. Credentials, vault/backups, raw command output, full emails, aliases, usernames, and absolute paths are structurally excluded; a canary/safety scan refuses unsafe output. Sharing remains a separate user action.

@@ -4,7 +4,7 @@ This matrix separates automated evidence from real-platform release gates. A gre
 
 | Platform surface | Automated evidence | Human evidence required | Current status |
 | --- | --- | --- | --- |
-| macOS renderer/store/coordinator | macOS CI runs 27 Node/TypeScript/build/canary checks | Keychain present/missing/locked/denied/prompted update and rollback with tester-owned accounts | Human gate |
+| macOS renderer/store/coordinator | macOS CI runs the full Node/TypeScript/build/canary suite | Keychain present/missing/locked/denied/prompted update and rollback with tester-owned accounts | Human gate |
 | macOS Keychain secret transport | Code uses `security ... -w` as the final option and supplies the value through stdin; no delete-before-update | Confirm current supported macOS accepts stdin and preserves access-control behavior | Human gate |
 | Windows renderer/store/coordinator | Windows CI runs the same checks | Verify supported Claude Code builds use the expected file authority, permissions, switch, rollback, install, and launch | Human gate |
 | Linux renderer/store/coordinator | Ubuntu CI and policy truth-table tests | Real GNOME and KDE desktop sessions | Human gate |

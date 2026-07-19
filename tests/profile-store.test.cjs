@@ -76,3 +76,20 @@ test("corrupt current store is quarantined and mutations stay blocked", async (t
   await assert.rejects(() => store.rename("missing", "Name"), /recovery is required/);
   assert.match(store.health().quarantine, /^store\.json\.corrupt-/);
 });
+
+test("configurable recovery retention prunes only oldest terminal records", async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "claude-switcher-test-"));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const store = new ProfileStore(dir, fakeSafeStorage);
+  const metadata = await store.add("Personal", bundle("one@example.com"));
+  const state = { credentials: { source: "credentials-file", present: true, account: null, value: "{}", mode: 0o600 }, rootConfig: {}, rootConfigSnapshot: { present: false, value: null, mode: null }, status: { loggedIn: true, email: "one@example.com", orgId: null } };
+  for (let index = 0; index < 7; index += 1) {
+    const record = await store.createRecoveryRecord({ transactionId: `00000000-0000-4000-8000-0000000000${String(index).padStart(2, "0")}`, targetProfileId: metadata.accounts[0].id, adapter: "credentials-file", state });
+    await store.updateRecoveryStatus(record.id, index === 0 ? "rollback-failed" : "committed");
+  }
+  await store.setRecoveryRetention(5);
+  const records = await store.listRecoveryRecords();
+  assert.equal(records.filter((item) => item.status === "committed").length, 5);
+  assert.equal(records.some((item) => item.status === "rollback-failed"), true);
+  assert.equal((await store.metadata()).preferences.recoveryRetention, 5);
+});

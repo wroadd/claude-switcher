@@ -42,6 +42,8 @@ Version-1 `profiles.json` and `vault.json` are migrated into the consolidated st
 
 Manual restore uses the same coordinator. It first creates a recovery point for the current state, validates/decrypts the selected historical record, requires a matching saved profile, applies and verifies it, then commits the matching active metadata.
 
+Terminal recovery records use a configurable 5–100 point retention policy (default 20). Only older integrity-valid `committed` or `rolled-back` directories are eligible; unresolved, rollback-failed, and invalid records are retained for explicit recovery/investigation.
+
 ## Diagnostics boundary
 
 The renderer can request an export but cannot provide a filesystem path. The main process opens a native save dialog and passes an allowlisted metadata projection to the diagnostics module. Profile IDs, aliases, and any internal paths are HMAC-pseudonymized; full emails, credentials, vault/recovery content, raw command output, and unknown error text are structurally excluded. A final content scan and size limit run before an atomic permission-restricted write. No network sharing occurs.

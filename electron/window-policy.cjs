@@ -19,4 +19,16 @@ function authorizeSender(event, window) {
   }
 }
 
-module.exports = { DEV_ORIGIN, authorizeSender, rendererTarget };
+function configureWindowSecurity(contents, { packaged }) {
+  contents.setWindowOpenHandler(() => ({ action: "deny" }));
+  contents.on("will-navigate", (event) => event.preventDefault());
+  contents.on("will-frame-navigate", (event) => event.preventDefault());
+  contents.on("will-attach-webview", (event) => event.preventDefault());
+  contents.session.setPermissionCheckHandler(() => false);
+  contents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  if (packaged) {
+    contents.session.webRequest.onHeadersReceived((details, callback) => callback({ responseHeaders: { ...details.responseHeaders, "Content-Security-Policy": ["default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"] } }));
+  }
+}
+
+module.exports = { DEV_ORIGIN, authorizeSender, configureWindowSecurity, rendererTarget };

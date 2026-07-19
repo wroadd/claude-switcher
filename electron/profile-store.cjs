@@ -20,6 +20,7 @@ function emptyState() {
     accounts: [],
     activity: [],
     entries: {},
+    preferences: { recoveryRetention: 20 },
   };
 }
 
@@ -39,6 +40,8 @@ function validateState(state) {
   if (!Array.isArray(state.accounts) || state.accounts.length > MAX_ACCOUNTS) throw new Error("Invalid accounts collection.");
   if (!Array.isArray(state.activity) || state.activity.length > MAX_ACTIVITY) throw new Error("Invalid activity collection.");
   if (!isObject(state.entries) || Object.keys(state.entries).length > MAX_ACCOUNTS) throw new Error("Invalid vault entries.");
+  if (state.preferences === undefined) state.preferences = { recoveryRetention: 20 };
+  if (!isObject(state.preferences) || !Number.isSafeInteger(state.preferences.recoveryRetention) || state.preferences.recoveryRetention < 5 || state.preferences.recoveryRetention > 100) throw new Error("Invalid store preferences.");
 
   const ids = new Set();
   let activeCount = 0;
@@ -222,7 +225,7 @@ class ProfileStore {
 
   async metadata() {
     const state = await this.readState();
-    return { version: state.version, revision: state.revision, accounts: state.accounts, activity: state.activity };
+    return { version: state.version, revision: state.revision, accounts: state.accounts, activity: state.activity, preferences: state.preferences };
   }
 
   async vault() {
@@ -322,6 +325,17 @@ class ProfileStore {
     });
   }
 
+  async setRecoveryRetention(value) {
+    return this.withMutation(async () => {
+      if (!Number.isSafeInteger(value) || value < 5 || value > 100) throw new Error("Recovery retention must be between 5 and 100.");
+      const state = await this.readState();
+      state.preferences.recoveryRetention = value;
+      await this.writeState(state);
+      await this.pruneRecoveryRecords(value);
+      return this.metadata();
+    });
+  }
+
   async createRecoveryRecord({ transactionId, targetProfileId, adapter, state }) {
     this.assertWritable();
     if (!this.encryptionAvailable()) throw new Error("OS-backed encryption is required for recovery records.");
@@ -382,6 +396,16 @@ class ProfileStore {
       }
     }
     return records.sort((a, b) => String(b.createdAt || "").localeCompare(String(a.createdAt || "")));
+  }
+
+  async pruneRecoveryRecords(limit = null) {
+    const retention = limit ?? (await this.readState()).preferences.recoveryRetention;
+    const records = await this.listRecoveryRecords();
+    const terminal = records.filter((record) => record.integrity === "valid" && ["committed", "rolled-back"].includes(record.status));
+    for (const record of terminal.slice(retention)) {
+      if (!RECOVERY_ID.test(record.id)) continue;
+      await fs.rm(path.join(this.backupRoot, record.id), { recursive: true, force: false });
+    }
   }
 
   async updateRecoveryStatus(id, status) {

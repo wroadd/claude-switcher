@@ -5,7 +5,8 @@ const claude = require("./claude-service.cjs");
 const { ActivationCoordinator } = require("./activation-coordinator.cjs");
 const { CHANNELS, parseRequest } = require("./ipc-contracts.cjs");
 const { assessSecureStorage } = require("./secure-storage-policy.cjs");
-const { authorizeSender, rendererTarget } = require("./window-policy.cjs");
+const { configureWindowSecurity, rendererTarget } = require("./window-policy.cjs");
+const { registerAuthorizedHandler } = require("./ipc-boundary.cjs");
 const { createDiagnostics, DIAGNOSTIC_EVENT_CODES } = require("./diagnostics.cjs");
 
 let mainWindow;
@@ -26,6 +27,7 @@ function publicError(error) {
     "CONCURRENT_AUTH_CHANGE",
     "DIAGNOSTICS_INVALID_INPUT", "DIAGNOSTICS_UNSAFE_CONTENT", "DIAGNOSTICS_SIZE_LIMIT", "DIAGNOSTICS_WRITE_FAILED",
     "RECOVERY_PROFILE_MISSING", "RESTORE_FAILED", "ENCRYPTION_UNAVAILABLE",
+    "INVALID_RETENTION",
   ]);
   if (allowed.has(error?.code)) return error;
   const sanitized = new Error("The operation could not be completed safely. Check the application status and try again.");
@@ -73,13 +75,7 @@ function createWindow() {
     },
   });
 
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-  mainWindow.webContents.on("will-navigate", (event) => event.preventDefault());
-  mainWindow.webContents.on("will-frame-navigate", (event) => event.preventDefault());
-  mainWindow.webContents.on("will-attach-webview", (event) => event.preventDefault());
-  const rendererSession = mainWindow.webContents.session;
-  rendererSession.setPermissionCheckHandler(() => false);
-  rendererSession.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  configureWindowSecurity(mainWindow.webContents, { packaged: app.isPackaged });
 
   return rendererTarget({ isPackaged: app.isPackaged, devUrl: process.env.VITE_DEV_SERVER_URL });
 }
@@ -105,17 +101,12 @@ async function state() {
     recovery,
     store: { ...store.health(), revision: metadata.revision },
     recoveries,
+    preferences: metadata.preferences,
   };
 }
 
 function handle(channel, operation) {
-  ipcMain.handle(channel, async (event, request) => {
-    try {
-      authorizeSender(event, mainWindow);
-      const parsed = parseRequest(channel, request);
-      return await operation(parsed);
-    } catch (error) { throw publicError(error); }
-  });
+  registerAuthorizedHandler({ ipcMain, channel, getWindow: () => mainWindow, operation, mapError: publicError });
 }
 
 function registerIpc() {
@@ -143,6 +134,7 @@ function registerIpc() {
     recovery = await coordinator.recoverPending();
     return state();
   });
+  handle(CHANNELS.retention, async ({ value }) => { ensureMutationsAllowed(); await store.setRecoveryRetention(value); return state(); });
   handle(CHANNELS.diagnostics, async () => {
     const result = await dialog.showSaveDialog(mainWindow, {
       title: "Export redacted diagnostics",
@@ -196,9 +188,6 @@ if (hasLock) app.whenReady().then(async () => {
   }
   const target = createWindow();
   registerIpc();
-  if (app.isPackaged) {
-    mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => callback({ responseHeaders: { ...details.responseHeaders, "Content-Security-Policy": ["default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"] } }));
-  }
   await loadWindow(target);
 }).catch((error) => {
   console.error("Claude Switcher failed to initialize safely:", error?.code || "INITIALIZATION_FAILED");

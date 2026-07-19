@@ -14,6 +14,7 @@ let demoState: AppState = {
   recovery: { status: "clear" },
   store: { mode: "ready", version: 2, revision: 0, reason: null },
   recoveries: [],
+  preferences: { recoveryRetention: 20 },
 };
 
 const clone = () => structuredClone(demoState);
@@ -42,5 +43,6 @@ export const demoApi: ClaudeSwitcherApi = {
   async restore() { return clone(); },
   async exportDiagnostics() { return { ok: false, message: "Diagnostics export is unavailable in browser preview mode." }; },
   async retryRecovery() { return clone(); },
+  async setRecoveryRetention(value) { demoState.preferences.recoveryRetention = value; return clone(); },
   async openLogin() { return { ok: true, message: "Login launch is disabled in browser preview mode." }; },
 };

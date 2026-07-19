@@ -4,6 +4,7 @@ const CHANNELS = Object.freeze({
   restore: "recovery:restore",
   diagnostics: "diagnostics:export",
   retryRecovery: "recovery:retry",
+  retention: "settings:recovery-retention",
 });
 
 function exactObject(value, keys) {
@@ -32,6 +33,11 @@ function parseRequest(channel, value) {
   if (channel === CHANNELS.capture) { exactObject(value, ["alias"]); return { alias: alias(value.alias) }; }
   if (channel === CHANNELS.activate || channel === CHANNELS.remove || channel === CHANNELS.restore) { exactObject(value, ["id"]); return { id: id(value.id) }; }
   if (channel === CHANNELS.rename) { exactObject(value, ["id", "alias"]); return { id: id(value.id), alias: alias(value.alias) }; }
+  if (channel === CHANNELS.retention) {
+    exactObject(value, ["value"]);
+    if (!Number.isSafeInteger(value.value) || value.value < 5 || value.value > 100) throw contractError("INVALID_RETENTION", "Recovery retention must be between 5 and 100.");
+    return { value: value.value };
+  }
   throw contractError("UNKNOWN_CHANNEL", "Unknown operation.");
 }
 
