@@ -25,9 +25,25 @@ test("profile store encrypts secrets and maintains one active account", async (t
   assert.equal(metadata.accounts.length, 2);
   assert.equal(metadata.accounts.filter((item) => item.active).length, 1);
   assert.equal(metadata.accounts.find((item) => item.active).alias, "Work");
-  const vaultText = await fs.readFile(path.join(dir, "vault.json"), "utf8");
-  assert.ok(!vaultText.includes("one@example.com"));
+  const storeText = await fs.readFile(path.join(dir, "store.json"), "utf8");
+  assert.ok(!storeText.includes("one@example.com"));
   assert.equal((await store.secret(metadata.accounts[0].id)).status.email, "one@example.com");
+  assert.equal(metadata.version, 2);
+  assert.equal(metadata.revision, 2);
+});
+
+test("legacy v1 metadata and vault migrate without changing encrypted entries", async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "claude-switcher-test-"));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const encrypted = fakeSafeStorage.encryptString(JSON.stringify(bundle("legacy@example.com"))).toString("base64");
+  await fs.writeFile(path.join(dir, "profiles.json"), JSON.stringify({ version: 1, accounts: [{ id: "legacy-1", alias: "Legacy", email: "legacy@example.com", authMethod: "claude.ai", subscriptionType: null, active: true, createdAt: new Date().toISOString(), lastUsedAt: null }], activity: [] }));
+  await fs.writeFile(path.join(dir, "vault.json"), JSON.stringify({ version: 1, entries: { "legacy-1": encrypted } }));
+  const store = new ProfileStore(dir, fakeSafeStorage);
+  const metadata = await store.metadata();
+  assert.equal(metadata.version, 2);
+  assert.equal(metadata.accounts[0].email.includes("legacy@example.com"), false);
+  assert.equal((await store.vault()).entries["legacy-1"], encrypted);
+  await assert.rejects(() => fs.stat(path.join(dir, "profiles.json")), /ENOENT/);
 });
 
 test("active profile cannot be removed", async (t) => {
@@ -36,4 +52,27 @@ test("active profile cannot be removed", async (t) => {
   const store = new ProfileStore(dir, fakeSafeStorage);
   const metadata = await store.add("Personal", bundle("one@example.com"));
   await assert.rejects(() => store.remove(metadata.accounts[0].id), /Activate another account/);
+});
+
+test("future store versions remain untouched and read-only", async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "claude-switcher-test-"));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const future = '{"version":99,"future":"preserve-me"}\n';
+  await fs.writeFile(path.join(dir, "store.json"), future);
+  const store = new ProfileStore(dir, fakeSafeStorage);
+  assert.equal((await store.metadata()).accounts.length, 0);
+  assert.equal(store.health().mode, "read-only");
+  await assert.rejects(() => store.add("Blocked", bundle("blocked@example.com")), /newer Claude Switcher/);
+  assert.equal(await fs.readFile(path.join(dir, "store.json"), "utf8"), future);
+});
+
+test("corrupt current store is quarantined and mutations stay blocked", async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "claude-switcher-test-"));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  await fs.writeFile(path.join(dir, "store.json"), "not-json");
+  const store = new ProfileStore(dir, fakeSafeStorage);
+  assert.equal((await store.metadata()).accounts.length, 0);
+  assert.equal(store.health().mode, "recovery-required");
+  await assert.rejects(() => store.rename("missing", "Name"), /recovery is required/);
+  assert.match(store.health().quarantine, /^store\.json\.corrupt-/);
 });

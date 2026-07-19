@@ -16,8 +16,10 @@ Claude Switcher protects stored account snapshots against casual filesystem disc
 
 The application does not transmit credentials. The only network authentication flow is launched through the official Claude Code CLI.
 
-## Current MVP limitations
+The detailed asset, boundary, abuse-case, and residual-risk analysis is maintained in [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md).
 
-Version 0.1 does not yet provide a complete encrypted recovery boundary. File-backed Claude credentials can be duplicated in a timestamped plaintext backup protected only by filesystem permissions, while macOS Keychain credentials are not included in that backup. Activation is not journaled and has no automatic rollback or post-write identity verification. These limitations are P0 work in the v0.2 Reliable Switching milestone; see `docs/GROUNDTRUTH_AUDIT.md`.
+## Released MVP and development status
 
-Do not use real credentials when testing backup, failure, or recovery behavior. Until v0.2 gates pass, keep an independent recovery path through the official `claude auth login` workflow.
+Released version 0.1 did not provide a complete encrypted recovery boundary: file-backed credentials could be duplicated in plaintext backups and Keychain state was not captured. The development branch replaces that path with OS-encrypted recovery records, transaction journaling, identity verification, and rollback.
+
+Version 0.2 is not release-ready until recovery is exercised on real macOS Keychain, Windows, GNOME Keyring/libsecret, and KWallet environments using tester-owned accounts. Do not use real credentials in automated tests. Keep an independent recovery path through the official `claude auth login` workflow until those gates pass.

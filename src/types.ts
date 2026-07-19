@@ -13,15 +13,18 @@ export type Activity = {
   id: string;
   accountId: string;
   alias: string;
-  type: "captured" | "activated" | "renamed" | "removed";
+  type: "captured" | "activated" | "renamed" | "removed" | "activation-rolled-back" | "activation-recovery-required";
   at: string;
+  details?: { transactionId?: string; recoveryId?: string; code?: string } | null;
 };
 
 export type AppState = {
   accounts: Account[];
   activity: Activity[];
   claude: { installed: boolean; version: string | null; loggedIn: boolean; email: string | null };
-  security: { encryptionAvailable: boolean; platform: string };
+  security: { encryptionAvailable: boolean; platform: string; storageBackend: string | null; reason: string | null; remediation: string | null };
+  recovery: { status: "clear" | "recovered" | "recovery-required"; recoveryId?: string; reason?: string };
+  store: { mode: "ready" | "read-only" | "recovery-required"; version: number | null; revision: number; reason: string | null; quarantine?: string };
 };
 
 export type ClaudeSwitcherApi = {

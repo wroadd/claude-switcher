@@ -26,6 +26,8 @@ Version `0.1.0` is an MVP for OAuth/subscription accounts. It provides:
 - local rename, remove, and activity-history operations;
 - a guided launcher for the official `claude auth login` flow.
 
+The development branch now contains the unreleased `v0.2.0 — Reliable Switching` core: a versioned consolidated store, encrypted recovery records, a journaled activation coordinator, post-write identity verification, automatic rollback, strict IPC validation, and fail-closed Linux/process policies. Real-platform recovery drills and restore UI remain release gates.
+
 API-key profiles are not included in this release. Persisting an API key in shell or Claude settings would expose it as plaintext; the feature is deliberately deferred until a secure activation model is available.
 
 ## Requirements
@@ -72,7 +74,7 @@ Claude Switcher never asks for your Claude password. OAuth is always handled by 
 
 Account metadata (alias, masked identity details, timestamps) is stored separately from credentials. Credential bundles are encrypted with Electron `safeStorage`, which delegates to Keychain on macOS, DPAPI on Windows, and the available secret store on Linux. The app refuses to capture credentials when OS-backed encryption is unavailable.
 
-Before activation, the MVP creates a timestamped backup of file-based Claude configuration below its private application data directory. It updates only the Claude credential material and the account-related `oauthAccount`/`userID` fields in `.claude.json`; unrelated Claude Code settings remain intact. The current backup is not yet a complete encrypted recovery mechanism: file-backed credentials are copied as plaintext with restrictive permissions, and macOS Keychain state is not captured. Transactional activation, encrypted recovery, rollback, and restore are the v0.2 release gate.
+Before activation, the development version encrypts the complete current credential/configuration state into an integrity-checked recovery record and writes a non-secret transaction journal. It applies the selected credential, verifies the resulting identity through `claude auth status --json`, and commits profile metadata last. A failed operation restores and verifies the previous state; an unverifiable recovery blocks further mutations and exposes only a recovery identifier.
 
 See [SECURITY.md](SECURITY.md) for the threat model and reporting process.
 
@@ -81,6 +83,7 @@ See [SECURITY.md](SECURITY.md) for the threat model and reporting process.
 - [Architecture](docs/ARCHITECTURE.md)
 - [Codex Switcher feature parity map](docs/FEATURE_PARITY.md)
 - [Groundtruth audit](docs/GROUNDTRUTH_AUDIT.md)
+- [Threat model](docs/THREAT_MODEL.md)
 - [Development guide](docs/DEVELOPMENT.md)
 - [Product roadmap](docs/ROADMAP.md)
 - [Project management](docs/PROJECT_MANAGEMENT.md)

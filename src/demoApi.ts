@@ -10,7 +10,9 @@ let demoState: AppState = {
     { id: "activity-2", accountId: "demo-work", alias: "work", type: "captured", at: new Date(Date.now() - 10800000).toISOString() },
   ],
   claude: { installed: true, version: "2.1.47 (Claude Code)", loggedIn: true, email: "alex@example.com" },
-  security: { encryptionAvailable: true, platform: "browser preview" },
+  security: { encryptionAvailable: true, platform: "browser preview", storageBackend: null, reason: null, remediation: null },
+  recovery: { status: "clear" },
+  store: { mode: "ready", version: 2, revision: 0, reason: null },
 };
 
 const clone = () => structuredClone(demoState);

@@ -1,15 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { Activity as ActivityIcon, Check, ChevronRight, Clock3, KeyRound, LockKeyhole, Pencil, Play, Plus, RefreshCw, Settings, Terminal, Trash2, UserRound, UsersRound, X } from "lucide-react";
-import type { Account, AppState } from "./types";
+import type { Account, AppState, ClaudeSwitcherApi } from "./types";
 import { demoApi } from "./demoApi";
 
 const emptyState: AppState = {
   accounts: [], activity: [],
   claude: { installed: false, version: null, loggedIn: false, email: null },
-  security: { encryptionAvailable: false, platform: "unknown" },
+  security: { encryptionAvailable: false, platform: "unknown", storageBackend: null, reason: null, remediation: null },
+  recovery: { status: "clear" },
+  store: { mode: "ready", version: 2, revision: 0, reason: null },
 };
 
-const api = window.claudeSwitcher ?? demoApi;
+const unavailableApi = new Proxy({}, { get: () => async () => { throw new Error("The native security bridge is unavailable. No account operation was performed."); } }) as ClaudeSwitcherApi;
+const api = window.claudeSwitcher ?? (import.meta.env.DEV ? demoApi : unavailableApi);
 
 function Logo() {
   return <div className="logo" aria-label="Claude Switcher"><span className="logo-mark"><span /></span><strong>Claude Switcher</strong></div>;
@@ -17,6 +20,7 @@ function Logo() {
 
 function maskedEmail(value: string | null) {
   if (!value) return "Identity unavailable";
+  if (value.includes("•")) return value;
   const [name, domain] = value.split("@");
   if (!domain) return value;
   return `${name.slice(0, 2)}${"•".repeat(Math.max(4, Math.min(8, name.length - 2)))}@${domain}`;
@@ -77,6 +81,7 @@ export default function App() {
   const [notice, setNotice] = useState<string | null>(null);
 
   const active = useMemo(() => state.accounts.find((account) => account.active), [state.accounts]);
+  const mutationsBlocked = state.recovery.status === "recovery-required" || state.store.mode !== "ready";
   const run = async (action: () => Promise<AppState>, success: string) => {
     setBusy(true); setNotice(null);
     try { setState(await action()); setNotice(success); }
@@ -115,9 +120,11 @@ export default function App() {
       <div className="privacy"><LockKeyhole /><span>Your credentials stay<br />on this device.</span></div>
     </aside>
     <section className="content">
+      {state.recovery.status === "recovery-required" && <div className="notice" role="alert">Account changes are blocked because activation recovery requires attention. Recovery ID: {state.recovery.recoveryId ?? "unknown"}</div>}
+      {state.store.mode !== "ready" && <div className="notice" role="alert">Profile storage is {state.store.mode}. Account changes are blocked to preserve existing data.</div>}
       {notice && <div className="notice" role="status">{notice}<button onClick={() => setNotice(null)}><X size={15} /></button></div>}
       {tab === "accounts" && <>
-        <div className="page-heading"><div><h1>Accounts</h1><p>Securely switch the Claude Code identity used on this device.</p></div><button className="primary" onClick={() => setAddOpen(true)} disabled={busy}><Plus />Add account</button></div>
+        <div className="page-heading"><div><h1>Accounts</h1><p>Securely switch the Claude Code identity used on this device.</p></div><button className="primary" onClick={() => setAddOpen(true)} disabled={busy || mutationsBlocked || !state.security.encryptionAvailable}><Plus />Add account</button></div>
         <section className="summary">
           <div><span className="summary-icon orange"><UserRound /></span><span><small>Active account</small><strong>{active?.alias ?? "Not captured"}</strong><em>{maskedEmail(active?.email ?? state.claude.email)}</em></span></div>
           <div><span className={`summary-icon ${state.claude.installed ? "green" : "gray"}`}>{state.claude.installed ? <Check /> : <X />}</span><span><small>Claude CLI {state.claude.installed ? "detected" : "not found"}</small><strong>{state.claude.installed ? "Connected" : "Unavailable"}</strong><em>{state.claude.version ?? "Install Claude Code to continue"}</em></span></div>
@@ -125,12 +132,12 @@ export default function App() {
         </section>
         <section className="accounts-list" aria-label="Saved accounts">
           <div className="list-head"><span>Account</span><span>Type</span><span>Status</span><span>Last used</span><span>Actions</span></div>
-          {state.accounts.length ? state.accounts.map((account) => <AccountRow key={account.id} account={account} busy={busy} onActivate={() => activate(account)} onRename={() => rename(account)} onRemove={() => remove(account)} />) : <div className="empty"><UsersRound /><strong>No saved accounts yet</strong><span>Sign in with Claude Code, then capture the current login.</span><button className="secondary" onClick={() => setAddOpen(true)}>Add your first account</button></div>}
+          {state.accounts.length ? state.accounts.map((account) => <AccountRow key={account.id} account={account} busy={busy || mutationsBlocked} onActivate={() => activate(account)} onRename={() => rename(account)} onRemove={() => remove(account)} />) : <div className="empty"><UsersRound /><strong>No saved accounts yet</strong><span>Sign in with Claude Code, then capture the current login.</span><button className="secondary" disabled={mutationsBlocked || !state.security.encryptionAvailable} onClick={() => setAddOpen(true)}>Add your first account</button></div>}
         </section>
         <section className="recent"><h2>Recent activity</h2>{state.activity.length ? state.activity.slice(0, 4).map((item) => <div className="activity-row" key={item.id}><Clock3 /><span><strong>{item.alias}</strong> {item.type}</span><time>{relativeTime(item.at)}</time></div>) : <div className="activity-empty"><Clock3 /><span><strong>No recent activity</strong>Account switches will appear here.</span></div>}</section>
       </>}
       {tab === "activity" && <><div className="page-heading"><div><h1>Activity</h1><p>A local audit trail of account profile actions.</p></div></div><section className="activity-page">{state.activity.length ? state.activity.map((item) => <div className="activity-row" key={item.id}><Clock3 /><span><strong>{item.alias}</strong> {item.type}</span><time>{new Date(item.at).toLocaleString()}</time></div>) : <div className="empty"><ActivityIcon /><strong>No activity recorded</strong><span>Your profile actions will be recorded locally.</span></div>}</section></>}
-      {tab === "settings" && <><div className="page-heading"><div><h1>Settings</h1><p>Security and runtime information for this installation.</p></div></div><section className="settings-page"><div><span>Credential encryption</span><strong>{state.security.encryptionAvailable ? "Available" : "Unavailable"}</strong></div><div><span>Platform</span><strong>{state.security.platform}</strong></div><div><span>Claude CLI</span><strong>{state.claude.version ?? "Not detected"}</strong></div><p>Claude Switcher stores encrypted credential snapshots in Electron's OS-backed secure storage. Account activation creates a timestamped backup before changing Claude Code authentication.</p></section></>}
+      {tab === "settings" && <><div className="page-heading"><div><h1>Settings</h1><p>Security and runtime information for this installation.</p></div></div><section className="settings-page"><div><span>Credential encryption</span><strong>{state.security.encryptionAvailable ? "Available" : "Unavailable"}</strong></div><div><span>Storage backend</span><strong>{state.security.storageBackend ?? "Operating system default"}</strong></div><div><span>Platform</span><strong>{state.security.platform}</strong></div><div><span>Store schema</span><strong>v{state.store.version}, revision {state.store.revision}</strong></div><div><span>Claude CLI</span><strong>{state.claude.version ?? "Not detected"}</strong></div>{state.security.remediation && <p>{state.security.remediation}</p>}<p>Claude Switcher stores encrypted credential snapshots and recovery records in Electron's OS-backed secure storage. Activation is verified and automatically rolled back on failure.</p></section></>}
     </section>
     {addOpen && <AddAccount onClose={() => setAddOpen(false)} onCapture={capture} onOpenLogin={openLogin} busy={busy} loggedIn={state.claude.loggedIn} />}
   </main>;

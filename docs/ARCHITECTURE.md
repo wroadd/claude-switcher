@@ -14,11 +14,12 @@ Node integration is disabled in the renderer, context isolation is enabled, and 
 
 Electron's application data directory contains:
 
-- `profiles.json` — aliases, masked identity metadata, active state, and local activity history;
-- `vault.json` — base64-encoded ciphertext produced by Electron `safeStorage`;
-- `backups/<timestamp>/` — MVP pre-switch copies of file-based Claude configuration when present. These copies are permission-restricted but not encrypted, and they do not capture macOS Keychain state. They must not be treated as a complete recovery boundary.
+- `store.json` — schema-v2, revisioned account metadata, activity, and `safeStorage` ciphertext entries in one atomic document;
+- `activation-journal.json` — non-secret transaction ID, target/previous profile IDs, adapter, and phase while activation is in progress;
+- `backups/<recovery-id>/manifest.json` — metadata-only recovery lifecycle and ciphertext integrity hash;
+- `backups/<recovery-id>/recovery.json` — the complete previous credential/root-config state encrypted with `safeStorage`.
 
-The vault contains opaque Claude credential JSON plus the account-specific `oauthAccount` and `userID` fields needed to keep Claude Code identity metadata aligned.
+Version-1 `profiles.json` and `vault.json` are migrated into the consolidated store while preserving profile IDs and ciphertext bytes. Invalid current stores are quarantined and future versions remain untouched/read-only. Full emails are replaced in metadata by a masked display value and a store-salted fingerprint; the encrypted bundle retains the identity needed for verification.
 
 ## Capture flow
 
@@ -26,22 +27,23 @@ The vault contains opaque Claude credential JSON plus the account-specific `oaut
 2. Read the active credential material from macOS Keychain or Claude's credentials file.
 3. Extract only account metadata from `.claude.json`.
 4. Encrypt the bundle with the operating system's secure-storage facility.
-5. Write the encrypted vault before publishing metadata.
+5. Commit the consolidated store atomically with a shared revision.
 
 ## Activation flow
 
-1. Refuse the operation when a `claude` process is running.
-2. Decrypt the selected profile in memory.
-3. Back up existing file-based Claude configuration.
-4. Replace the credential entry or file.
-5. Merge account metadata into `.claude.json` without replacing unrelated settings.
-6. Mark the profile active and append an audit event.
-
-This sequence describes the v0.1 implementation, not an atomicity guarantee. The v0.2 design will preflight and journal the operation, create a complete encrypted recovery bundle, verify the resulting CLI identity, commit metadata last, and automatically roll back on failure.
+1. Require a `clear` process probe; `blocked` and `unknown` both stop activation.
+2. Decrypt and validate the selected profile, capture the authoritative current credential adapter and exact recoverable state.
+3. Persist an encrypted recovery record and non-secret `prepared` journal before mutation.
+4. Recheck that official auth state did not change during preflight.
+5. Apply credentials without deleting the existing Keychain item first and merge only account metadata into `.claude.json`.
+6. Verify the intended identity through `claude auth status --json`.
+7. Commit active-profile metadata last, mark recovery committed, and remove the journal.
+8. On failure, restore exact prior file bytes/permissions or Keychain value, verify the previous identity, and record rollback. Unverifiable rollback retains the journal and blocks mutations.
 
 ## Platform behavior
 
 - **macOS:** OAuth credentials are read from and written to the `Claude Code-credentials` generic-password item in Keychain when available.
-- **Linux and Windows:** the MVP supports Claude's `.credentials.json` file layout. The encrypted profile vault remains protected by the platform implementation behind Electron `safeStorage`.
+- **Linux:** `.credentials.json` is supported only when Electron selects `gnome_libsecret`, `kwallet`, `kwallet5`, or `kwallet6`; `basic_text` and `unknown` are rejected.
+- **Windows:** the current adapter supports Claude's `.credentials.json` layout; real supported-build verification remains a human compatibility gate.
 
 Platform behavior can change with Claude Code releases. Compatibility is therefore verified through the public `claude auth status --json` command, and raw credentials are treated as opaque JSON.

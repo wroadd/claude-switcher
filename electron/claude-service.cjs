@@ -3,9 +3,12 @@ const { promisify } = require("node:util");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
+const crypto = require("node:crypto");
 
 const execFileAsync = promisify(execFile);
 const KEYCHAIN_SERVICE = "Claude Code-credentials";
+const MAX_CREDENTIAL_BYTES = 2 * 1024 * 1024;
+const MAX_CONFIG_BYTES = 8 * 1024 * 1024;
 
 function claudeConfigDir() {
   return process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), ".claude");
@@ -40,7 +43,7 @@ function normalizeStatus(raw) {
 
 async function commandExists(command) {
   const locator = process.platform === "win32" ? "where" : "which";
-  try { await execFileAsync(locator, [command]); return true; } catch { return false; }
+  try { await execFileAsync(locator, [command], { timeout: 5000 }); return true; } catch { return false; }
 }
 
 async function getClaudeStatus() {
@@ -55,90 +58,230 @@ async function getClaudeStatus() {
   }
 }
 
-async function readJson(file, fallback = null) {
-  try { return JSON.parse(await fs.readFile(file, "utf8")); } catch (error) {
+async function readJson(file, fallback = null, maxBytes = MAX_CONFIG_BYTES) {
+  try {
+    const stat = await fs.stat(file);
+    if (stat.size > maxBytes) throw new Error("Claude configuration exceeds the safe size limit.");
+    return JSON.parse(await fs.readFile(file, "utf8"));
+  } catch (error) {
     if (error.code === "ENOENT") return fallback;
     throw error;
   }
 }
 
+async function readFileSnapshot(file, maxBytes = MAX_CONFIG_BYTES) {
+  try {
+    const stat = await fs.lstat(file);
+    if (stat.isSymbolicLink()) throw new Error("Claude configuration symlinks are not supported for privileged writes.");
+    if (!stat.isFile() || stat.size > maxBytes) throw new Error("Claude configuration has an unsafe file type or size.");
+    return { present: true, value: await fs.readFile(file, "utf8"), mode: stat.mode & 0o777 };
+  } catch (error) {
+    if (error.code === "ENOENT") return { present: false, value: null, mode: null };
+    throw error;
+  }
+}
+
+function parseCredentialValue(value) {
+  if (typeof value !== "string" || Buffer.byteLength(value) > MAX_CREDENTIAL_BYTES) throw new Error("Claude credentials exceed the safe size limit.");
+  const parsed = JSON.parse(value);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Claude credentials are not a JSON object.");
+  return parsed;
+}
+
 async function readCurrentCredentials() {
   if (process.platform === "darwin") {
     try {
-      const { stdout } = await execFileAsync("security", ["find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"], { maxBuffer: 2 * 1024 * 1024 });
+      const { stdout } = await execFileAsync("security", ["find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"], { maxBuffer: MAX_CREDENTIAL_BYTES });
       const value = stdout.trim();
-      JSON.parse(value);
+      parseCredentialValue(value);
       return { source: "macos-keychain", value };
-    } catch (error) {
+    } catch (keychainError) {
+      const notFound = Number(keychainError.code) === 44 || /could not be found/i.test(String(keychainError.stderr || ""));
+      if (!notFound) {
+        const error = new Error("Claude credentials could not be read from macOS Keychain.");
+        error.code = "KEYCHAIN_ACCESS_FAILED";
+        throw error;
+      }
       const fileValue = await fs.readFile(credentialsPath(), "utf8").catch(() => null);
-      if (fileValue) { JSON.parse(fileValue); return { source: "credentials-file", value: fileValue }; }
-      throw new Error("Claude credentials were not found in macOS Keychain or ~/.claude/.credentials.json.");
+      if (fileValue) {
+        parseCredentialValue(fileValue);
+        const stat = await fs.stat(credentialsPath());
+        return { source: "credentials-file", value: fileValue, mode: stat.mode & 0o777 };
+      }
+      const error = new Error("Claude credentials were not found in macOS Keychain or ~/.claude/.credentials.json.");
+      error.code = "CREDENTIALS_NOT_FOUND";
+      throw error;
     }
   }
   const value = await fs.readFile(credentialsPath(), "utf8").catch(() => null);
-  if (!value) throw new Error("Claude credentials were not found at ~/.claude/.credentials.json.");
-  JSON.parse(value);
-  return { source: "credentials-file", value };
+  if (!value) {
+    const error = new Error("Claude credentials were not found at ~/.claude/.credentials.json.");
+    error.code = "CREDENTIALS_NOT_FOUND";
+    throw error;
+  }
+  parseCredentialValue(value);
+  const stat = await fs.stat(credentialsPath());
+  return { source: "credentials-file", value, mode: stat.mode & 0o777 };
+}
+
+async function captureCredentialState({ requireLogin = false } = {}) {
+  const status = await getClaudeStatus();
+  if (requireLogin && !status.installed) throw new Error("Claude Code is not installed or is not available on PATH.");
+  if (requireLogin && !status.loggedIn) throw new Error("Claude Code is not logged in. Open Claude login, finish authentication, and try again.");
+  const credentials = await readCurrentCredentials();
+  const rootConfigSnapshot = await readFileSnapshot(rootConfigPath());
+  const rootConfig = rootConfigSnapshot.present ? JSON.parse(rootConfigSnapshot.value) : {};
+  return { credentials, rootConfig, rootConfigSnapshot, capturedAt: new Date().toISOString(), status };
 }
 
 async function captureCredentialBundle() {
-  const status = await getClaudeStatus();
-  if (!status.installed) throw new Error("Claude Code is not installed or is not available on PATH.");
-  if (!status.loggedIn) throw new Error("Claude Code is not logged in. Open Claude login, finish authentication, and try again.");
-  const credentials = await readCurrentCredentials();
-  const rootConfig = await readJson(rootConfigPath(), {});
+  const current = await captureCredentialState({ requireLogin: true });
   return {
-    credentials,
-    oauthAccount: rootConfig?.oauthAccount ?? null,
-    userID: rootConfig?.userID ?? null,
-    capturedAt: new Date().toISOString(),
-    status,
+    credentials: current.credentials,
+    oauthAccount: current.rootConfig?.oauthAccount ?? null,
+    userID: current.rootConfig?.userID ?? null,
+    capturedAt: current.capturedAt,
+    status: current.status,
   };
 }
 
-async function hasRunningClaude() {
+async function probeClaudeProcesses() {
   if (process.platform === "win32") {
     try {
-      const { stdout } = await execFileAsync("tasklist", ["/FI", "IMAGENAME eq claude.exe", "/NH"]);
-      return /claude\.exe/i.test(stdout);
-    } catch { return false; }
+      const { stdout } = await execFileAsync("tasklist", ["/FI", "IMAGENAME eq claude.exe", "/NH"], { timeout: 5000 });
+      return /claude\.exe/i.test(stdout) ? { status: "blocked" } : { status: "clear" };
+    } catch { return { status: "unknown", code: "PROCESS_PROBE_FAILED" }; }
   }
-  try { await execFileAsync("pgrep", ["-x", "claude"]); return true; } catch { return false; }
+  try {
+    const { stdout } = await execFileAsync("ps", ["-axo", "pid=,comm=,args="], { timeout: 5000, maxBuffer: 4 * 1024 * 1024 });
+    const blocked = stdout.split("\n").some((line) => {
+      const normalized = line.trim().toLowerCase();
+      if (!normalized || normalized.includes("claude-switcher")) return false;
+      return /(^|[\s/])claude(?:\.exe)?(?:\s|$)/.test(normalized) || /@anthropic-ai\/claude-code/.test(normalized);
+    });
+    return blocked ? { status: "blocked" } : { status: "clear" };
+  } catch { return { status: "unknown", code: "PROCESS_PROBE_FAILED" }; }
+}
+
+async function hasRunningClaude() {
+  return (await probeClaudeProcesses()).status !== "clear";
 }
 
 async function atomicWrite(file, contents, mode = 0o600) {
   await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
-  const temp = `${file}.${process.pid}.tmp`;
-  await fs.writeFile(temp, contents, { mode });
-  await fs.rename(temp, file);
-  await fs.chmod(file, mode).catch(() => {});
-}
-
-async function backupFile(file, backupDir, label) {
+  const temp = `${file}.${process.pid}.${crypto.randomUUID()}.tmp`;
+  const handle = await fs.open(temp, "wx", mode);
   try {
-    const value = await fs.readFile(file);
-    await fs.mkdir(backupDir, { recursive: true, mode: 0o700 });
-    await fs.writeFile(path.join(backupDir, label), value, { mode: 0o600 });
-  } catch (error) { if (error.code !== "ENOENT") throw error; }
+    await handle.writeFile(contents);
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+  try {
+    await fs.rename(temp, file);
+    await fs.chmod(file, mode).catch(() => {});
+  } catch (error) {
+    await fs.unlink(temp).catch(() => {});
+    throw error;
+  }
 }
 
-async function writeCredentials(bundle, backupDir) {
-  await backupFile(credentialsPath(), backupDir, "credentials.json");
-  await backupFile(rootConfigPath(), backupDir, "claude.json");
-
-  if (process.platform === "darwin" && bundle.credentials.source === "macos-keychain") {
-    await execFileAsync("security", ["delete-generic-password", "-s", KEYCHAIN_SERVICE]).catch(() => {});
-    await execFileAsync("security", ["add-generic-password", "-U", "-a", os.userInfo().username, "-s", KEYCHAIN_SERVICE, "-w", bundle.credentials.value], { maxBuffer: 2 * 1024 * 1024 });
-  } else {
-    await atomicWrite(credentialsPath(), `${JSON.stringify(JSON.parse(bundle.credentials.value), null, 2)}\n`);
+async function writeCredentialValue(source, value) {
+  const parsed = parseCredentialValue(value);
+  if (source === "macos-keychain") {
+    if (process.platform !== "darwin") throw new Error("macOS Keychain credentials cannot be written on this platform.");
+    await runSecurityWithSecret(["add-generic-password", "-U", "-a", os.userInfo().username, "-s", KEYCHAIN_SERVICE, "-w"], value);
+    return;
   }
+  if (source !== "credentials-file") throw new Error("Unsupported Claude credential adapter.");
+  await atomicWrite(credentialsPath(), `${JSON.stringify(parsed, null, 2)}\n`);
+}
 
-  const rootConfig = await readJson(rootConfigPath(), {});
-  if (bundle.oauthAccount) rootConfig.oauthAccount = bundle.oauthAccount;
-  else delete rootConfig.oauthAccount;
-  if (bundle.userID) rootConfig.userID = bundle.userID;
-  else delete rootConfig.userID;
-  await atomicWrite(rootConfigPath(), `${JSON.stringify(rootConfig, null, 2)}\n`);
+async function runSecurityWithSecret(args, secret) {
+  await new Promise((resolve, reject) => {
+    const child = spawn("security", args, { stdio: ["pipe", "ignore", "pipe"] });
+    let stderr = "";
+    const timer = setTimeout(() => {
+      child.kill();
+      const error = new Error("macOS Keychain operation timed out.");
+      error.code = "KEYCHAIN_TIMEOUT";
+      reject(error);
+    }, 15000);
+    child.stderr.on("data", (chunk) => { if (stderr.length < 4096) stderr += chunk.toString(); });
+    child.once("error", (cause) => {
+      clearTimeout(timer);
+      const error = new Error("macOS Keychain operation could not be started.");
+      error.code = "KEYCHAIN_WRITE_FAILED";
+      error.cause = cause;
+      reject(error);
+    });
+    child.once("close", (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve();
+      else {
+        const error = new Error("macOS Keychain rejected the credential update.");
+        error.code = "KEYCHAIN_WRITE_FAILED";
+        error.detail = stderr ? "security command returned an error" : null;
+        reject(error);
+      }
+    });
+    child.stdin.end(`${secret}\n`);
+  });
+}
+
+function mergeAccountMetadata(rootConfig, bundle) {
+  const next = structuredClone(rootConfig);
+  if (bundle.oauthAccount) next.oauthAccount = bundle.oauthAccount;
+  else delete next.oauthAccount;
+  if (bundle.userID) next.userID = bundle.userID;
+  else delete next.userID;
+  return next;
+}
+
+async function applyCredentialBundle(bundle, destinationSource) {
+  parseCredentialValue(bundle?.credentials?.value);
+  const currentRoot = await readJson(rootConfigPath(), {});
+  const nextRoot = mergeAccountMetadata(currentRoot, bundle);
+  await writeCredentialValue(destinationSource, bundle.credentials.value);
+  await atomicWrite(rootConfigPath(), `${JSON.stringify(nextRoot, null, 2)}\n`);
+}
+
+async function restoreCredentialState(state) {
+  if (!state?.credentials?.source) throw new Error("Recovery state has no credential adapter.");
+  parseCredentialValue(state.credentials.value);
+  if (!isPlainObject(state.rootConfig)) throw new Error("Recovery root configuration is invalid.");
+  if (state.credentials.source === "credentials-file") {
+    await atomicWrite(credentialsPath(), state.credentials.value, state.credentials.mode || 0o600);
+  } else {
+    await writeCredentialValue(state.credentials.source, state.credentials.value);
+  }
+  if (state.rootConfigSnapshot?.present) {
+    await atomicWrite(rootConfigPath(), state.rootConfigSnapshot.value, state.rootConfigSnapshot.mode || 0o600);
+  } else if (state.rootConfigSnapshot && !state.rootConfigSnapshot.present) {
+    await fs.unlink(rootConfigPath()).catch((error) => { if (error.code !== "ENOENT") throw error; });
+  } else {
+    await atomicWrite(rootConfigPath(), `${JSON.stringify(state.rootConfig, null, 2)}\n`);
+  }
+}
+
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function identityMatches(expected, actual) {
+  if (!actual?.loggedIn) return false;
+  if (expected?.email && actual.email !== expected.email) return false;
+  if (expected?.orgId && actual.orgId && actual.orgId !== expected.orgId) return false;
+  return Boolean(expected?.email || expected?.orgId || actual.loggedIn);
+}
+
+function credentialStateMatches(expected, actual) {
+  if (expected?.credentials?.source !== actual?.credentials?.source) return false;
+  if (expected?.credentials?.value !== actual?.credentials?.value) return false;
+  const expectedRoot = expected?.rootConfigSnapshot;
+  const actualRoot = actual?.rootConfigSnapshot;
+  if (expectedRoot && actualRoot) return expectedRoot.present === actualRoot.present && expectedRoot.value === actualRoot.value;
+  return JSON.stringify(expected?.rootConfig ?? {}) === JSON.stringify(actual?.rootConfig ?? {});
 }
 
 async function launchClaudeLogin() {
@@ -158,6 +301,8 @@ async function launchClaudeLogin() {
 }
 
 module.exports = {
-  KEYCHAIN_SERVICE, atomicWrite, captureCredentialBundle, getClaudeStatus,
-  hasRunningClaude, launchClaudeLogin, normalizeStatus, safeProfileId, writeCredentials,
+  KEYCHAIN_SERVICE, applyCredentialBundle, atomicWrite, captureCredentialBundle,
+  captureCredentialState, credentialStateMatches, getClaudeStatus, hasRunningClaude, identityMatches,
+  launchClaudeLogin, mergeAccountMetadata, normalizeStatus, parseCredentialValue,
+  probeClaudeProcesses, restoreCredentialState, safeProfileId, writeCredentialValue,
 };

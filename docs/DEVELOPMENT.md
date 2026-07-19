@@ -21,6 +21,8 @@ pnpm check             run tests and build
 pnpm dist              package the current platform
 ```
 
+Pull requests run `pnpm check` on Ubuntu, macOS, and Windows. Repository branch protection should require all three `CI / check` jobs. Credential-service behavior that hosted runners cannot reproduce must be recorded as a manual release gate rather than silently skipped.
+
 Use an even-numbered LTS Node.js release from 20 through 24. The Electron 37 installer is not compatible with the experimental Node.js 26 runtime.
 
 ## Safe test strategy

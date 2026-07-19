@@ -4,6 +4,8 @@ Date: 2026-07-19
 Scope: tracked files in Claude Switcher and the user-owned Codex Switcher fork  
 Method: one finite, read-only Groundtruth loop; every required area is classified with evidence and severity
 
+This table records the pre-v0.2 baseline at commit `97e711e`. Remediation status is tracked through the v0.2 milestone issues and the current architecture/threat-model documents; the historical findings are retained rather than rewritten.
+
 Outcomes are **proved**, **weak**, **no issue**, **not applicable**, or **unverified**. Severity is P0 (release blocker), P1 (production hardening), P2 (planned improvement), or none.
 
 | Area | Outcome | Severity | Evidence and conclusion |

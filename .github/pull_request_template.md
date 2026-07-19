@@ -13,6 +13,8 @@ Describe the user-visible or operational result.
 
 Describe credential, storage, IPC, process, updater, diagnostics, or import/export impact. Confirm that no real credentials, tokens, full emails, or private configuration are present.
 
+Security review is mandatory for changes under `electron/**`, preload/IPC, credential adapters, schemas/migrations, backups/recovery, import/export, diagnostics, child processes, shell/network access, updater behavior, build workflows, or security-sensitive dependencies.
+
 ## Clean-room provenance
 
 If behavior was inspired by a reference product, cite the observable requirement and describe the independent Claude-specific design. Confirm that no source, assets, strings, constants, or undocumented payloads were copied.
