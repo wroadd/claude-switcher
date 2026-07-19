@@ -24,6 +24,8 @@ pnpm dist              package the current platform
 
 Pull requests run `pnpm check` on Ubuntu, macOS, and Windows. Repository branch protection should require all three `CI / check` jobs. Credential-service behavior that hosted runners cannot reproduce must be recorded as a manual release gate rather than silently skipped.
 
+The Linux CI runner assigns the bundled Chromium `chrome-sandbox` helper its required root ownership and `4755` mode before the Electron smoke. The application still runs with renderer sandboxing enabled; `--no-sandbox` is not used.
+
 Use an even-numbered LTS Node.js release from 20 through 24. The Electron 37 installer is not compatible with the experimental Node.js 26 runtime.
 
 ## Safe test strategy

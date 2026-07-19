@@ -34,4 +34,11 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm check
+      - name: Configure Electron sandbox helper
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          sandbox_path="$(dirname "$(node -p "require('electron')")")/chrome-sandbox"
+          sudo chown root "$sandbox_path"
+          sudo chmod 4755 "$sandbox_path"
       - run: ${{ matrix.smoke }}
