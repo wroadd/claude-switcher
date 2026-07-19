@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Claude Switcher icon">
+  <rect width="1024" height="1024" rx="224" fill="#20201f"/>
+  <path d="M512 184 758 326v284L512 752 266 610V326Z" fill="none" stroke="#e36238" stroke-width="58" stroke-linejoin="round"/>
+  <path d="m286 596 226-132 226 132" fill="none" stroke="#e36238" stroke-width="58" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="512" cy="464" r="48" fill="#f8f7f4"/>
+</svg>
