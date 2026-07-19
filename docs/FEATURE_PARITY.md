@@ -67,8 +67,8 @@ The optional web router is a distinct command boundary. It adds browser-oriented
 | Force-close and retry | Shipped | Missing | Discovery; explicit opt-in only | Discovery |
 | Rename/delete/active-state management | Shipped with active-state divergence edge cases | Basic operations shipped | Enforce store and official-state invariants | v0.2 |
 | Backup and restore | No safe pre-write recovery in reference | File backup only; incomplete and plaintext for credentials | Encrypted complete recovery plus restore UI | v0.2 |
-| Native tray switching | Shipped | Missing | Implement after the safe coordinator | v0.4 |
-| Close-to-background and macOS Dock/menu-bar modes | Shipped | Missing | Implement with a visible escape-path invariant | v0.4 |
+| Native tray switching | Shipped | Implemented in development with alias-only native menu | Validate on real targets after the safe coordinator | v0.4 |
+| Close-to-background and macOS Dock/menu-bar modes | Shipped | Implemented in development with guarded fallback | Validate with a visible escape-path invariant | v0.4 |
 | Theme, sorting, masking | Shipped/partial; tray masking leaks | Minimal main-window presentation | Implement consistently and accessibly | v0.4 |
 | Metadata refresh and re-auth guidance | Shipped with Codex-specific OAuth refresh | Basic current CLI status only | Use documented Claude CLI behavior only | v0.4 |
 | Open companion desktop app | Partial | Missing | Constrained platform-specific launcher | v0.4 |

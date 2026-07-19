@@ -1,4 +1,4 @@
-const { app, BrowserWindow, dialog, ipcMain, safeStorage } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, safeStorage, Tray } = require("electron");
 const path = require("node:path");
 const { ProfileStore } = require("./profile-store.cjs");
 const claude = require("./claude-service.cjs");
@@ -8,12 +8,17 @@ const { assessSecureStorage } = require("./secure-storage-policy.cjs");
 const { configureWindowSecurity, rendererTarget } = require("./window-policy.cjs");
 const { registerAuthorizedHandler } = require("./ipc-boundary.cjs");
 const { createDiagnostics, DIAGNOSTIC_EVENT_CODES } = require("./diagnostics.cjs");
+const { createTrayController } = require("./tray-controller.cjs");
+const { applyDockMode, shouldHideWindowOnClose } = require("./desktop-lifecycle.cjs");
 
 let mainWindow;
 let store;
 let coordinator;
 let recovery = { status: "clear" };
 let storagePolicy;
+let trayController;
+let isQuitting = false;
+let desktopPreferences = { closeBehavior: "hide", dockMode: "dock-and-menu-bar" };
 
 const hasLock = app.requestSingleInstanceLock();
 if (!hasLock) app.quit();
@@ -27,7 +32,7 @@ function publicError(error) {
     "CONCURRENT_AUTH_CHANGE",
     "DIAGNOSTICS_INVALID_INPUT", "DIAGNOSTICS_UNSAFE_CONTENT", "DIAGNOSTICS_SIZE_LIMIT", "DIAGNOSTICS_WRITE_FAILED",
     "RECOVERY_PROFILE_MISSING", "RESTORE_FAILED", "ENCRYPTION_UNAVAILABLE",
-    "INVALID_RETENTION",
+    "INVALID_RETENTION", "INVALID_CLOSE_BEHAVIOR", "INVALID_DOCK_MODE",
   ]);
   if (allowed.has(error?.code)) return error;
   const sanitized = new Error("The operation could not be completed safely. Check the application status and try again.");
@@ -76,8 +81,24 @@ function createWindow() {
   });
 
   configureWindowSecurity(mainWindow.webContents, { packaged: app.isPackaged });
+  mainWindow.on("close", (event) => {
+    if (shouldHideWindowOnClose({ isQuitting, closeBehavior: desktopPreferences.closeBehavior, trayAvailable: trayController?.available() === true })) {
+      event.preventDefault();
+      mainWindow.hide();
+    }
+  });
 
   return rendererTarget({ isPackaged: app.isPackaged, devUrl: process.env.VITE_DEV_SERVER_URL });
+}
+
+async function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    const target = createWindow();
+    await loadWindow(target);
+  }
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
 }
 
 async function loadWindow(target) {
@@ -109,22 +130,30 @@ function handle(channel, operation) {
   registerAuthorizedHandler({ ipcMain, channel, getWindow: () => mainWindow, operation, mapError: publicError });
 }
 
+async function refreshDesktop() {
+  const metadata = await store.metadata();
+  desktopPreferences = metadata.preferences;
+  await applyDockMode({ platform: process.platform, dock: app.dock, dockMode: desktopPreferences.dockMode, trayAvailable: trayController?.available() === true });
+  await trayController?.refresh();
+  return state();
+}
+
 function registerIpc() {
   handle(CHANNELS.state, state);
   handle(CHANNELS.capture, async ({ alias }) => {
     ensureCredentialOperationsAllowed();
     const bundle = await claude.captureCredentialBundle();
     await store.add(alias, bundle);
-    return state();
+    return refreshDesktop();
   });
   handle(CHANNELS.activate, async ({ id }) => {
     ensureCredentialOperationsAllowed();
     await coordinator.activate(id);
-    return state();
+    return refreshDesktop();
   });
-  handle(CHANNELS.rename, async ({ id, alias }) => { ensureMutationsAllowed(); await store.rename(id, alias); return state(); });
-  handle(CHANNELS.remove, async ({ id }) => { ensureMutationsAllowed(); await store.remove(id); return state(); });
-  handle(CHANNELS.restore, async ({ id }) => { ensureCredentialOperationsAllowed(); await coordinator.restore(id); return state(); });
+  handle(CHANNELS.rename, async ({ id, alias }) => { ensureMutationsAllowed(); await store.rename(id, alias); return refreshDesktop(); });
+  handle(CHANNELS.remove, async ({ id }) => { ensureMutationsAllowed(); await store.remove(id); return refreshDesktop(); });
+  handle(CHANNELS.restore, async ({ id }) => { ensureCredentialOperationsAllowed(); await coordinator.restore(id); return refreshDesktop(); });
   handle(CHANNELS.retryRecovery, async () => {
     if (!storagePolicy.usable) {
       const error = new Error(storagePolicy.remediation || "A supported operating-system credential service is required for recovery.");
@@ -132,9 +161,11 @@ function registerIpc() {
       throw error;
     }
     recovery = await coordinator.recoverPending();
-    return state();
+    return refreshDesktop();
   });
-  handle(CHANNELS.retention, async ({ value }) => { ensureMutationsAllowed(); await store.setRecoveryRetention(value); return state(); });
+  handle(CHANNELS.retention, async ({ value }) => { ensureMutationsAllowed(); await store.setRecoveryRetention(value); return refreshDesktop(); });
+  handle(CHANNELS.closeBehavior, async ({ value }) => { ensureMutationsAllowed(); await store.setCloseBehavior(value); return refreshDesktop(); });
+  handle(CHANNELS.dockMode, async ({ value }) => { ensureMutationsAllowed(); await store.setDockMode(value); return refreshDesktop(); });
   handle(CHANNELS.diagnostics, async () => {
     const result = await dialog.showSaveDialog(mainWindow, {
       title: "Export redacted diagnostics",
@@ -171,8 +202,8 @@ function registerIpc() {
 }
 
 if (hasLock) {
-  app.on("second-instance", () => { if (mainWindow) { if (mainWindow.isMinimized()) mainWindow.restore(); mainWindow.show(); mainWindow.focus(); } });
-  app.on("activate", async () => { if (BrowserWindow.getAllWindows().length === 0) { const target = createWindow(); await loadWindow(target); } });
+  app.on("second-instance", () => { void showMainWindow(); });
+  app.on("activate", () => { void showMainWindow(); });
 }
 
 if (hasLock) app.whenReady().then(async () => {
@@ -189,6 +220,29 @@ if (hasLock) app.whenReady().then(async () => {
   const target = createWindow();
   registerIpc();
   await loadWindow(target);
+  desktopPreferences = (await store.metadata()).preferences;
+  trayController = createTrayController({
+    Tray, Menu, nativeImage, platform: process.platform,
+    iconPath: path.join(__dirname, "..", "build", process.platform === "darwin" ? "trayTemplate.png" : "icon.png"),
+    getState: state,
+    activate: async (id) => { ensureCredentialOperationsAllowed(); await coordinator.activate(id); },
+    showWindow: () => { void showMainWindow(); },
+    quit: () => { isQuitting = true; app.quit(); },
+    setDockMode: async (mode) => { ensureMutationsAllowed(); await store.setDockMode(mode); desktopPreferences = (await store.metadata()).preferences; await applyDockMode({ platform: process.platform, dock: app.dock, dockMode: mode, trayAvailable: true }); },
+    onError: async (error) => {
+      const safe = publicError(error);
+      const options = { type: "error", title: "Claude Switcher", message: safe.message };
+      if (mainWindow && !mainWindow.isDestroyed()) await dialog.showMessageBox(mainWindow, options);
+      else await dialog.showMessageBox(options);
+    },
+  });
+  try {
+    await trayController.start();
+    await applyDockMode({ platform: process.platform, dock: app.dock, dockMode: desktopPreferences.dockMode, trayAvailable: true });
+  } catch (error) {
+    trayController?.dispose();
+    console.error("Claude Switcher tray is unavailable:", error?.code || "TRAY_UNAVAILABLE");
+  }
   if (process.env.CLAUDE_SWITCHER_SMOKE === "1") {
     const preferences = mainWindow.webContents.getLastWebPreferences();
     if (!preferences.contextIsolation || preferences.nodeIntegration || !preferences.sandbox) throw new Error("Electron security preferences failed smoke validation.");
@@ -200,4 +254,5 @@ if (hasLock) app.whenReady().then(async () => {
   app.quit();
 });
 
-app.on("window-all-closed", () => { if (process.platform !== "darwin") app.quit(); });
+app.on("before-quit", () => { isQuitting = true; });
+app.on("window-all-closed", () => app.quit());

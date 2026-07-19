@@ -10,5 +10,7 @@ contextBridge.exposeInMainWorld("claudeSwitcher", Object.freeze({
   exportDiagnostics: () => ipcRenderer.invoke("diagnostics:export", {}),
   retryRecovery: () => ipcRenderer.invoke("recovery:retry", {}),
   setRecoveryRetention: (value) => ipcRenderer.invoke("settings:recovery-retention", { value }),
+  setCloseBehavior: (value) => ipcRenderer.invoke("settings:close-behavior", { value }),
+  setDockMode: (value) => ipcRenderer.invoke("settings:dock-mode", { value }),
   openLogin: () => ipcRenderer.invoke("auth:login", {}),
 }));

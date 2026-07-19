@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented here.
 
+## [Unreleased]
+
+### Added
+
+- Native macOS menu-bar and cross-platform tray workflow with alias-only profile switching.
+- Close-to-background behavior and guarded macOS Dock/menu-bar-only preferences.
+- Dedicated 1× and 2× macOS Template icon assets.
+
+### Security
+
+- Tray switching uses the same process, recovery, identity-verification, and rollback coordinator as the main window.
+- Missing, invalid, or resize-empty tray images fail closed before the tray can become the application's only visible entry point.
+
 ## [0.1.0] - 2026-07-19
 
 ### Added

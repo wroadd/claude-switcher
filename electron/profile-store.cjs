@@ -11,6 +11,7 @@ const MAX_RECOVERY_PLAINTEXT_BYTES = 24 * 1024 * 1024;
 const MAX_RECOVERY_FILE_BYTES = 40 * 1024 * 1024;
 const RECOVERY_ID = /^[a-zA-Z0-9_.-]{1,200}$/;
 const JOURNAL_PHASES = new Set(["prepared", "applied", "verified", "metadata-committed", "rolling-back", "recovery-required"]);
+const DEFAULT_PREFERENCES = Object.freeze({ recoveryRetention: 20, closeBehavior: "hide", dockMode: "dock-and-menu-bar" });
 
 function emptyState() {
   return {
@@ -20,7 +21,7 @@ function emptyState() {
     accounts: [],
     activity: [],
     entries: {},
-    preferences: { recoveryRetention: 20 },
+    preferences: { ...DEFAULT_PREFERENCES },
   };
 }
 
@@ -40,8 +41,12 @@ function validateState(state) {
   if (!Array.isArray(state.accounts) || state.accounts.length > MAX_ACCOUNTS) throw new Error("Invalid accounts collection.");
   if (!Array.isArray(state.activity) || state.activity.length > MAX_ACTIVITY) throw new Error("Invalid activity collection.");
   if (!isObject(state.entries) || Object.keys(state.entries).length > MAX_ACCOUNTS) throw new Error("Invalid vault entries.");
-  if (state.preferences === undefined) state.preferences = { recoveryRetention: 20 };
-  if (!isObject(state.preferences) || !Number.isSafeInteger(state.preferences.recoveryRetention) || state.preferences.recoveryRetention < 5 || state.preferences.recoveryRetention > 100) throw new Error("Invalid store preferences.");
+  if (state.preferences === undefined) state.preferences = {};
+  if (!isObject(state.preferences)) throw new Error("Invalid store preferences.");
+  state.preferences.recoveryRetention ??= DEFAULT_PREFERENCES.recoveryRetention;
+  state.preferences.closeBehavior ??= DEFAULT_PREFERENCES.closeBehavior;
+  state.preferences.dockMode ??= DEFAULT_PREFERENCES.dockMode;
+  if (!Number.isSafeInteger(state.preferences.recoveryRetention) || state.preferences.recoveryRetention < 5 || state.preferences.recoveryRetention > 100 || !["hide", "quit"].includes(state.preferences.closeBehavior) || !["dock-and-menu-bar", "menu-bar-only"].includes(state.preferences.dockMode)) throw new Error("Invalid store preferences.");
 
   const ids = new Set();
   let activeCount = 0;
@@ -332,6 +337,26 @@ class ProfileStore {
       state.preferences.recoveryRetention = value;
       await this.writeState(state);
       await this.pruneRecoveryRecords(value);
+      return this.metadata();
+    });
+  }
+
+  async setCloseBehavior(value) {
+    return this.withMutation(async () => {
+      if (!["hide", "quit"].includes(value)) throw new Error("Invalid close behavior.");
+      const state = await this.readState();
+      state.preferences.closeBehavior = value;
+      await this.writeState(state);
+      return this.metadata();
+    });
+  }
+
+  async setDockMode(value) {
+    return this.withMutation(async () => {
+      if (!["dock-and-menu-bar", "menu-bar-only"].includes(value)) throw new Error("Invalid Dock mode.");
+      const state = await this.readState();
+      state.preferences.dockMode = value;
+      await this.writeState(state);
       return this.metadata();
     });
   }

@@ -29,6 +29,7 @@ test("profile store encrypts secrets and maintains one active account", async (t
   assert.ok(!storeText.includes("one@example.com"));
   assert.equal((await store.secret(metadata.accounts[0].id)).status.email, "one@example.com");
   assert.equal(metadata.version, 2);
+  assert.deepEqual(metadata.preferences, { recoveryRetention: 20, closeBehavior: "hide", dockMode: "dock-and-menu-bar" });
   assert.equal(metadata.revision, 2);
 });
 
@@ -92,4 +93,14 @@ test("configurable recovery retention prunes only oldest terminal records", asyn
   assert.equal(records.filter((item) => item.status === "committed").length, 5);
   assert.equal(records.some((item) => item.status === "rollback-failed"), true);
   assert.equal((await store.metadata()).preferences.recoveryRetention, 5);
+});
+
+test("desktop lifecycle preferences are validated and persisted", async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "claude-switcher-test-"));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const store = new ProfileStore(dir, fakeSafeStorage);
+  await store.setCloseBehavior("quit");
+  await store.setDockMode("menu-bar-only");
+  assert.deepEqual((await store.metadata()).preferences, { recoveryRetention: 20, closeBehavior: "quit", dockMode: "menu-bar-only" });
+  await assert.rejects(() => store.setDockMode("hidden"), /Invalid Dock mode/);
 });

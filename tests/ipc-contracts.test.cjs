@@ -9,6 +9,8 @@ test("IPC contracts normalize expected envelopes", () => {
   assert.deepEqual(parseRequest(CHANNELS.restore, { id: "2026-07-19-recovery.id" }), { id: "2026-07-19-recovery.id" });
   assert.deepEqual(parseRequest(CHANNELS.retryRecovery, {}), {});
   assert.deepEqual(parseRequest(CHANNELS.retention, { value: 20 }), { value: 20 });
+  assert.deepEqual(parseRequest(CHANNELS.closeBehavior, { value: "hide" }), { value: "hide" });
+  assert.deepEqual(parseRequest(CHANNELS.dockMode, { value: "menu-bar-only" }), { value: "menu-bar-only" });
 });
 
 test("IPC contracts reject coercion, unknown fields, controls, and hostile IDs", () => {
@@ -18,4 +20,6 @@ test("IPC contracts reject coercion, unknown fields, controls, and hostile IDs",
   assert.throws(() => parseRequest(CHANNELS.activate, { id: "../../secret" }), /identifier/);
   assert.throws(() => parseRequest(CHANNELS.state, null), /Invalid request/);
   assert.throws(() => parseRequest(CHANNELS.retention, { value: 2 }), /between 5 and 100/);
+  assert.throws(() => parseRequest(CHANNELS.closeBehavior, { value: "background" }), /close behavior/);
+  assert.throws(() => parseRequest(CHANNELS.dockMode, { value: "hidden" }), /Dock mode/);
 });

@@ -45,7 +45,7 @@
   "build": {
     "appId": "com.wroadd.claudeswitcher",
     "productName": "Claude Switcher",
-    "files": ["dist/**/*", "electron/**/*", "package.json"],
+    "files": ["dist/**/*", "electron/**/*", "build/icon.png", "build/trayTemplate.png", "build/trayTemplate@2x.png", "package.json"],
     "directories": { "output": "release" },
     "mac": { "category": "public.app-category.developer-tools", "icon": "build/icon.png", "target": ["dmg", "zip"] },
     "win": { "icon": "build/icon.png", "target": ["nsis"] },

@@ -43,13 +43,16 @@ Release gate: every advertised artifact installs, launches, verifies, and recove
 
 ## v0.4.0 — Native Desktop Workflow
 
-- single-instance tray/menu-bar lifecycle and safe tray switching;
-- privacy-safe tray display modes and macOS Dock/close behavior;
+- [x] single-instance native tray/menu-bar lifecycle and safe tray switching;
+- [x] alias-only tray presentation and guarded macOS Dock/close behavior;
+- [ ] compact richer tray presentation and additional privacy display modes;
 - profile metadata refresh, local health checks, and re-authentication guidance;
 - search, sorting, masking across all surfaces, theme, keyboard access, and accessibility checks;
 - constrained launcher for the official Claude application where supported.
 
 Release gate: every tray operation uses the same transactional coordinator as the main window, and the application always retains a visible recovery/quit path.
+
+Implementation status: the native tray slice is automated-test complete. Manual menu-bar, Dock, and real-account switching checks are deferred and tracked in `VERIFICATION_STATUS.md`; they remain required before a supported release.
 
 ## v1.0.0 — Production Readiness
 
