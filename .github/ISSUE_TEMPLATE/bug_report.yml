@@ -1,0 +1,47 @@
+name: Bug report
+description: Report a reproducible Claude Switcher defect using synthetic or redacted data.
+title: "[Bug]: "
+labels: ["type:bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Never attach real credentials, tokens, complete auth output, or application-data directories.
+  - type: input
+    id: version
+    attributes:
+      label: Claude Switcher version
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Operating system and Claude Code version
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened?
+      description: Include reproducible steps with synthetic or redacted data.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: Security, privacy, or recovery impact
+      description: Use private vulnerability reporting instead if disclosure could expose credentials or enable unauthorized activation.
+    validations:
+      required: true
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Data safety
+      options:
+        - label: I removed credentials, tokens, full emails, and private paths from this report.
+          required: true

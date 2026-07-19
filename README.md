@@ -72,15 +72,18 @@ Claude Switcher never asks for your Claude password. OAuth is always handled by 
 
 Account metadata (alias, masked identity details, timestamps) is stored separately from credentials. Credential bundles are encrypted with Electron `safeStorage`, which delegates to Keychain on macOS, DPAPI on Windows, and the available secret store on Linux. The app refuses to capture credentials when OS-backed encryption is unavailable.
 
-Before activation, Claude Switcher creates a timestamped backup below its private application data directory. It updates only the Claude credential material and the account-related `oauthAccount`/`userID` fields in `.claude.json`; unrelated Claude Code settings remain intact.
+Before activation, the MVP creates a timestamped backup of file-based Claude configuration below its private application data directory. It updates only the Claude credential material and the account-related `oauthAccount`/`userID` fields in `.claude.json`; unrelated Claude Code settings remain intact. The current backup is not yet a complete encrypted recovery mechanism: file-backed credentials are copied as plaintext with restrictive permissions, and macOS Keychain state is not captured. Transactional activation, encrypted recovery, rollback, and restore are the v0.2 release gate.
 
 See [SECURITY.md](SECURITY.md) for the threat model and reporting process.
 
 ## Project documentation
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [Codex Switcher feature parity map](docs/FEATURE_PARITY.md)
+- [Groundtruth audit](docs/GROUNDTRUTH_AUDIT.md)
 - [Development guide](docs/DEVELOPMENT.md)
 - [Product roadmap](docs/ROADMAP.md)
+- [Project management](docs/PROJECT_MANAGEMENT.md)
 - [Contributing](CONTRIBUTING.md)
 - [Security policy](SECURITY.md)
 

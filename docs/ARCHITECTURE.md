@@ -16,7 +16,7 @@ Electron's application data directory contains:
 
 - `profiles.json` — aliases, masked identity metadata, active state, and local activity history;
 - `vault.json` — base64-encoded ciphertext produced by Electron `safeStorage`;
-- `backups/<timestamp>/` — pre-switch copies of Claude configuration files when present.
+- `backups/<timestamp>/` — MVP pre-switch copies of file-based Claude configuration when present. These copies are permission-restricted but not encrypted, and they do not capture macOS Keychain state. They must not be treated as a complete recovery boundary.
 
 The vault contains opaque Claude credential JSON plus the account-specific `oauthAccount` and `userID` fields needed to keep Claude Code identity metadata aligned.
 
@@ -36,6 +36,8 @@ The vault contains opaque Claude credential JSON plus the account-specific `oaut
 4. Replace the credential entry or file.
 5. Merge account metadata into `.claude.json` without replacing unrelated settings.
 6. Mark the profile active and append an audit event.
+
+This sequence describes the v0.1 implementation, not an atomicity guarantee. The v0.2 design will preflight and journal the operation, create a complete encrypted recovery bundle, verify the resulting CLI identity, commit metadata last, and automatically roll back on failure.
 
 ## Platform behavior
 

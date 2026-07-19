@@ -1,0 +1,35 @@
+name: Feature request
+description: Propose an independently designed Claude Switcher capability.
+title: "[Feature]: "
+labels: ["type:feature"]
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: User outcome
+      description: Describe the problem and observable result, not copied implementation details.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope and non-goals
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance and test evidence
+    validations:
+      required: true
+  - type: textarea
+    id: security
+    attributes:
+      label: Security and privacy impact
+    validations:
+      required: true
+  - type: textarea
+    id: provenance
+    attributes:
+      label: Clean-room provenance
+      description: If inspired by another product, cite only observed behavior and explain the independent Claude-specific contract.
