@@ -45,7 +45,7 @@ Release gate: every advertised artifact installs, launches, verifies, and recove
 
 - [x] single-instance native tray/menu-bar lifecycle and safe tray switching;
 - [x] alias-only tray presentation and guarded macOS Dock/close behavior;
-- [ ] compact richer tray presentation and additional privacy display modes;
+- [ ] [compact richer tray presentation and additional privacy display modes](https://github.com/wroadd/claude-switcher/issues/23);
 - profile metadata refresh, local health checks, and re-authentication guidance;
 - search, sorting, masking across all surfaces, theme, keyboard access, and accessibility checks;
 - constrained launcher for the official Claude application where supported.

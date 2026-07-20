@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
-const { atomicWrite, credentialStateMatches, identityMatches, normalizeStatus, restoreCredentialState, safeProfileId } = require("../electron/claude-service.cjs");
+const { applyCredentialBundle, atomicWrite, credentialStateMatches, identityMatches, normalizeStatus, restoreCredentialState, safeProfileId } = require("../electron/claude-service.cjs");
 
 test("normalizeStatus exposes only expected identity metadata", () => {
   assert.deepEqual(normalizeStatus({
@@ -49,6 +49,39 @@ test("file recovery can restore original absence", async (t) => {
   await restoreCredentialState({ credentials: { source: "credentials-file", present: false, account: null, value: null, mode: null }, rootConfig: {}, rootConfigSnapshot: { present: false, value: null, mode: null } });
   await assert.rejects(() => fs.stat(path.join(dir, ".credentials.json")), /ENOENT/);
   await assert.rejects(() => fs.stat(path.join(dir, ".claude.json")), /ENOENT/);
+});
+
+test("file adapter exposes the credential/root mutation boundary for exact rollback", async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "claude-switcher-service-"));
+  t.after(async () => { delete process.env.CLAUDE_CONFIG_DIR; await fs.rm(dir, { recursive: true, force: true }); });
+  process.env.CLAUDE_CONFIG_DIR = dir;
+  const credentials = "{\n  \"synthetic\": \"previous\"\n}\n";
+  const root = "{\"theme\":\"dark\",\"oauthAccount\":\"previous\"}\n";
+  await fs.writeFile(path.join(dir, ".credentials.json"), credentials, { mode: 0o640 });
+  await fs.writeFile(path.join(dir, ".claude.json"), root, { mode: 0o640 });
+  const previous = {
+    credentials: { source: "credentials-file", present: true, account: null, value: credentials, mode: 0o640 },
+    rootConfig: JSON.parse(root),
+    rootConfigSnapshot: { present: true, value: root, mode: 0o640 },
+  };
+
+  await assert.rejects(
+    () => applyCredentialBundle(
+      { credentials: { value: "{\"synthetic\":\"target\"}" }, oauthAccount: "target", userID: null },
+      "credentials-file",
+      null,
+      { afterCredentialWrite: async () => { throw new Error("synthetic root boundary failure"); } },
+    ),
+    /root boundary failure/,
+  );
+  assert.match(await fs.readFile(path.join(dir, ".credentials.json"), "utf8"), /target/);
+  assert.equal(await fs.readFile(path.join(dir, ".claude.json"), "utf8"), root);
+
+  await restoreCredentialState(previous);
+  assert.equal(await fs.readFile(path.join(dir, ".credentials.json"), "utf8"), credentials);
+  assert.equal(await fs.readFile(path.join(dir, ".claude.json"), "utf8"), root);
+  assert.equal((await fs.stat(path.join(dir, ".credentials.json"))).mode & 0o777, 0o640);
+  assert.equal((await fs.stat(path.join(dir, ".claude.json"))).mode & 0o777, 0o640);
 });
 
 test("atomic credential write removes plaintext temp file when rename fails", async (t) => {

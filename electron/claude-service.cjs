@@ -256,11 +256,12 @@ function mergeAccountMetadata(rootConfig, bundle) {
   return next;
 }
 
-async function applyCredentialBundle(bundle, destinationSource, destinationAccount = null) {
+async function applyCredentialBundle(bundle, destinationSource, destinationAccount = null, hooks = {}) {
   parseCredentialValue(bundle?.credentials?.value);
   const currentRoot = await readJson(rootConfigPath(), {});
   const nextRoot = mergeAccountMetadata(currentRoot, bundle);
   await writeCredentialValue(destinationSource, bundle.credentials.value, destinationAccount);
+  if (typeof hooks.afterCredentialWrite === "function") await hooks.afterCredentialWrite();
   await atomicWrite(rootConfigPath(), `${JSON.stringify(nextRoot, null, 2)}\n`);
 }
 
