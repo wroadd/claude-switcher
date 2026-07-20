@@ -4,15 +4,17 @@ This file separates repeatable automated evidence from checks that require a rea
 
 ## Automated evidence
 
-As of 2026-07-19:
+As of 2026-07-20:
 
-- 43 Node tests cover the activation coordinator, rollback/recovery, storage, IPC, diagnostics, security policy, desktop lifecycle, native tray menu model, and empty-icon fail-closed behavior;
+- 52 Node tests cover the activation coordinator, rollback/recovery, storage, IPC, diagnostics, security policy, desktop lifecycle, native tray menu model, and empty-icon fail-closed behavior;
 - TypeScript checking and the Vite production build pass;
 - the built renderer passes the credential-canary artifact scan;
 - the isolated Electron main/renderer security smoke passes locally;
 - three-platform CI has previously passed on Ubuntu, macOS, and Windows for the reliable-switching baseline.
 
 These checks use temporary directories, synthetic credential states, and fake OS encryption adapters. They do not read or mutate the developer's real Claude credentials.
+
+The automated activation matrix now includes a failure between credential and root-config mutations, rollback failure with an immutable pending journal, a blocked second activation, ambiguous metadata write reconciliation, commit-finalization failure, restart finalization, and main-process recovery latching for both activation and restore operations. These checks prove the platform-neutral transaction contract; they do not replace the credential-service drills listed below.
 
 The Codex Security diff scan completed with 10/10 review receipts and no reportable security findings. Its only dynamically reproduced hardening candidate—an empty `NativeImage` being accepted as a tray escape path—was subsequently closed in code by checking both the loaded and resized image before constructing `Tray`.
 

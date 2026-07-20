@@ -37,7 +37,7 @@ An attacker controlling the logged-in OS session, instrumenting the main process
 
 | Abuse case | Mitigation/evidence | Residual disposition |
 | --- | --- | --- |
-| Crash leaves mixed credential/config/metadata state | Journaled coordinator, encrypted recovery, atomic writes, identity verification, rollback tests | Real-platform recovery drills remain release gates |
+| Crash or partial apply leaves mixed credential/config/metadata state | Authoritative pending journal, encrypted recovery, atomic writes, credential/root mutation-boundary injection, exact state comparison, identity verification, and immediate main-process recovery latching | Real-platform recovery drills remain release gates |
 | Keychain replacement loses current login | Update without delete, encrypted prior snapshot, rollback | macOS prompt/ACL behavior is a human gate |
 | Plaintext backup exposes credentials | Recovery payload is `safeStorage` ciphertext; manifest contains no identity/secret | Legacy v0.1 backups require cleanup guidance |
 | Renderer sends coerced, oversized, or path-like IPC | Exact envelope validation and authorized sender tests | Accepted |

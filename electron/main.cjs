@@ -10,6 +10,7 @@ const { registerAuthorizedHandler } = require("./ipc-boundary.cjs");
 const { createDiagnostics, DIAGNOSTIC_EVENT_CODES } = require("./diagnostics.cjs");
 const { createTrayController } = require("./tray-controller.cjs");
 const { applyDockMode, shouldHideWindowOnClose } = require("./desktop-lifecycle.cjs");
+const { assertMutationsAllowed, runRecoveryTrackedOperation } = require("./recovery-state.cjs");
 
 let mainWindow;
 let store;
@@ -41,17 +42,7 @@ function publicError(error) {
 }
 
 function ensureMutationsAllowed() {
-  const health = store.health();
-  if (health.mode !== "ready") {
-    const error = new Error(health.mode === "read-only" ? "This profile store was created by a newer Claude Switcher version and is read-only." : `Profile store recovery is required. Quarantine: ${health.quarantine || "unknown"}`);
-    error.code = health.reason;
-    throw error;
-  }
-  if (recovery.status === "recovery-required") {
-    const error = new Error(`An interrupted activation requires recovery before changes can continue. Recovery ID: ${recovery.recoveryId}`);
-    error.code = "RECOVERY_REQUIRED";
-    throw error;
-  }
+  assertMutationsAllowed({ health: store.health(), recovery });
 }
 
 function ensureCredentialOperationsAllowed() {
@@ -130,6 +121,14 @@ function handle(channel, operation) {
   registerAuthorizedHandler({ ipcMain, channel, getWindow: () => mainWindow, operation, mapError: publicError });
 }
 
+async function runCredentialOperation(operation) {
+  ensureCredentialOperationsAllowed();
+  return runRecoveryTrackedOperation(operation, (nextRecovery) => { recovery = nextRecovery; });
+}
+
+async function activateProfile(id) { return runCredentialOperation(() => coordinator.activate(id)); }
+async function restoreRecovery(recoveryId) { return runCredentialOperation(() => coordinator.restore(recoveryId)); }
+
 async function refreshDesktop() {
   const metadata = await store.metadata();
   desktopPreferences = metadata.preferences;
@@ -147,13 +146,12 @@ function registerIpc() {
     return refreshDesktop();
   });
   handle(CHANNELS.activate, async ({ id }) => {
-    ensureCredentialOperationsAllowed();
-    await coordinator.activate(id);
+    await activateProfile(id);
     return refreshDesktop();
   });
   handle(CHANNELS.rename, async ({ id, alias }) => { ensureMutationsAllowed(); await store.rename(id, alias); return refreshDesktop(); });
   handle(CHANNELS.remove, async ({ id }) => { ensureMutationsAllowed(); await store.remove(id); return refreshDesktop(); });
-  handle(CHANNELS.restore, async ({ id }) => { ensureCredentialOperationsAllowed(); await coordinator.restore(id); return refreshDesktop(); });
+  handle(CHANNELS.restore, async ({ id }) => { await restoreRecovery(id); return refreshDesktop(); });
   handle(CHANNELS.retryRecovery, async () => {
     if (!storagePolicy.usable) {
       const error = new Error(storagePolicy.remediation || "A supported operating-system credential service is required for recovery.");
@@ -225,7 +223,7 @@ if (hasLock) app.whenReady().then(async () => {
     Tray, Menu, nativeImage, platform: process.platform,
     iconPath: path.join(__dirname, "..", "build", process.platform === "darwin" ? "trayTemplate.png" : "icon.png"),
     getState: state,
-    activate: async (id) => { ensureCredentialOperationsAllowed(); await coordinator.activate(id); },
+    activate: activateProfile,
     showWindow: () => { void showMainWindow(); },
     quit: () => { isQuitting = true; app.quit(); },
     setDockMode: async (mode) => { ensureMutationsAllowed(); await store.setDockMode(mode); desktopPreferences = (await store.metadata()).preferences; await applyDockMode({ platform: process.platform, dock: app.dock, dockMode: mode, trayAvailable: true }); },

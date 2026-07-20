@@ -14,6 +14,10 @@ All notable changes to this project will be documented here.
 
 - Tray switching uses the same process, recovery, identity-verification, and rollback coordinator as the main window.
 - Missing, invalid, or resize-empty tray images fail closed before the tray can become the application's only visible entry point.
+- Pending activation journals now block every new activation before any credential or metadata mutation can begin.
+- Partial credential/root-config application failures are injectable and verified to restore the exact previous state.
+- Activation and restore rollback failures immediately latch the main process into recovery-required mode, preserving the original recovery identifier.
+- A verified activation reports success only after its recovery manifest and journal finalization are durable.
 
 ## [0.1.0] - 2026-07-19
 

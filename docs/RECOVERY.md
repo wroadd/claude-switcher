@@ -15,6 +15,8 @@ If automatic rollback or its identity verification cannot be completed, the appl
 3. shows the recovery identifier without exposing identity or credentials;
 4. retries safe journal recovery on the next application start only when the Claude process probe is clear.
 
+The pending journal is authoritative. Every activation checks for it before process probing or credential mutation, and activation or restore rollback failures latch the running main process into recovery-required mode immediately. A second activation cannot replace the original journal or recovery identifier. If the target credential and metadata were verified but recovery-manifest or journal finalization fails, the operation does not report success; restart/retry reconciliation completes that durable commit before mutations resume.
+
 Do not delete the recovery directory or edit Claude configuration while collecting evidence. Close Claude Code, restart Claude Switcher once, and record the recovery ID. If the state remains blocked, use the official `claude auth login` flow and report the issue through the private security channel when credential loss/exposure may be involved.
 
 ## Manual restore
