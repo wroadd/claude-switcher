@@ -63,7 +63,7 @@ The optional web router is a distinct command boundary. It adds browser-oriented
 | Reference capability | Reference status | Claude Switcher MVP | Decision | Target |
 | --- | --- | --- | --- | --- |
 | Multiple account capture and switching | Shipped | Shipped for official Claude Code OAuth captures | Keep; make transactional | v0.2 |
-| Running-process guard | Shipped, cross-platform and Codex-specific | Basic probe, with false-negative/fail-open cases | Build Claude-specific fail-closed adapters | v0.2 |
+| Running-process guard | Shipped, cross-platform and Codex-specific | Tri-state direct/Node-hosted platform probes; automated fixtures complete | Validate tester-owned launch patterns | v0.2 |
 | Force-close and retry | Shipped | Missing | Discovery; explicit opt-in only | Discovery |
 | Rename/delete/active-state management | Shipped with active-state divergence edge cases | Basic operations shipped | Enforce store and official-state invariants | v0.2 |
 | Backup and restore | No safe pre-write recovery in reference | File backup only; incomplete and plaintext for credentials | Encrypted complete recovery plus restore UI | v0.2 |
