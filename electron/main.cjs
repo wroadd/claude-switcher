@@ -164,6 +164,7 @@ function registerIpc() {
   handle(CHANNELS.retention, async ({ value }) => { ensureMutationsAllowed(); await store.setRecoveryRetention(value); return refreshDesktop(); });
   handle(CHANNELS.closeBehavior, async ({ value }) => { ensureMutationsAllowed(); await store.setCloseBehavior(value); return refreshDesktop(); });
   handle(CHANNELS.dockMode, async ({ value }) => { ensureMutationsAllowed(); await store.setDockMode(value); return refreshDesktop(); });
+  handle(CHANNELS.trayDisplayMode, async ({ value }) => { ensureMutationsAllowed(); await store.setTrayDisplayMode(value); return refreshDesktop(); });
   handle(CHANNELS.diagnostics, async () => {
     const result = await dialog.showSaveDialog(mainWindow, {
       title: "Export redacted diagnostics",

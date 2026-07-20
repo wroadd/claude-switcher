@@ -26,7 +26,7 @@ export type AppState = {
   recovery: { status: "clear" | "recovered" | "recovery-required"; recoveryId?: string; reason?: string };
   store: { mode: "ready" | "read-only" | "recovery-required"; version: number | null; revision: number; reason: string | null; quarantine?: string };
   recoveries: Array<{ id: string; createdAt: string | null; updatedAt: string | null; status: string; adapter: string | null; targetProfileId: string | null; integrity: "valid" | "invalid" }>;
-  preferences: { recoveryRetention: number; closeBehavior: "hide" | "quit"; dockMode: "dock-and-menu-bar" | "menu-bar-only" };
+  preferences: { recoveryRetention: number; closeBehavior: "hide" | "quit"; dockMode: "dock-and-menu-bar" | "menu-bar-only"; trayDisplayMode: "aliases" | "numbered" };
 };
 
 export type ClaudeSwitcherApi = {
@@ -41,5 +41,6 @@ export type ClaudeSwitcherApi = {
   setRecoveryRetention(value: number): Promise<AppState>;
   setCloseBehavior(value: "hide" | "quit"): Promise<AppState>;
   setDockMode(value: "dock-and-menu-bar" | "menu-bar-only"): Promise<AppState>;
+  setTrayDisplayMode(value: "aliases" | "numbered"): Promise<AppState>;
   openLogin(): Promise<{ ok: boolean; message: string }>;
 };

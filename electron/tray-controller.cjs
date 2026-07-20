@@ -32,20 +32,23 @@ function createTrayController({ Tray, Menu, nativeImage, iconPath, platform, get
     if (!tray) return;
     const state = await getState();
     const active = state.accounts.find((account) => account.active);
+    const numbered = state.preferences.trayDisplayMode === "numbered";
+    const displayLabel = (account, index) => numbered ? `Profile ${index + 1}` : account.alias;
     const blocked = switching || state.store.mode !== "ready" || state.recovery.status === "recovery-required" || !state.security.encryptionAvailable;
     const profiles = state.accounts.length
-      ? state.accounts.map((account) => ({
-          label: account.alias,
+      ? state.accounts.map((account, index) => ({
+          label: displayLabel(account, index),
           type: "radio",
           checked: account.active,
           enabled: !blocked && !account.active,
           click: () => void switchProfile(account.id),
         }))
       : [{ label: "No saved profiles", enabled: false }];
+    const activeIndex = active ? state.accounts.findIndex((account) => account.id === active.id) : -1;
     const template = [
-      { label: active ? `Active: ${active.alias}` : "No active profile", enabled: false },
+      { label: active ? `Active: ${displayLabel(active, activeIndex)}` : "No active profile", enabled: false },
       { type: "separator" },
-      ...profiles,
+      { label: "Switch profile", submenu: profiles },
       { type: "separator" },
       { label: "Open Claude Switcher", click: showWindow },
     ];
@@ -58,7 +61,7 @@ function createTrayController({ Tray, Menu, nativeImage, iconPath, platform, get
       });
     }
     template.push({ type: "separator" }, { label: "Quit Claude Switcher", click: quit });
-    tray.setToolTip(active ? `Claude Switcher — ${active.alias}` : "Claude Switcher");
+    tray.setToolTip(active && !numbered ? `Claude Switcher — ${active.alias}` : "Claude Switcher");
     tray.setContextMenu(Menu.buildFromTemplate(template));
   }
 

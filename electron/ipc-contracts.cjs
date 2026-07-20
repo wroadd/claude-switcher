@@ -7,6 +7,7 @@ const CHANNELS = Object.freeze({
   retention: "settings:recovery-retention",
   closeBehavior: "settings:close-behavior",
   dockMode: "settings:dock-mode",
+  trayDisplayMode: "settings:tray-display-mode",
 });
 
 function exactObject(value, keys) {
@@ -48,6 +49,11 @@ function parseRequest(channel, value) {
   if (channel === CHANNELS.dockMode) {
     exactObject(value, ["value"]);
     if (!["dock-and-menu-bar", "menu-bar-only"].includes(value.value)) throw contractError("INVALID_DOCK_MODE", "Invalid Dock mode.");
+    return { value: value.value };
+  }
+  if (channel === CHANNELS.trayDisplayMode) {
+    exactObject(value, ["value"]);
+    if (!["aliases", "numbered"].includes(value.value)) throw contractError("INVALID_TRAY_DISPLAY_MODE", "Invalid tray display mode.");
     return { value: value.value };
   }
   throw contractError("UNKNOWN_CHANNEL", "Unknown operation.");

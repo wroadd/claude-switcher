@@ -10,7 +10,7 @@ const emptyState: AppState = {
   recovery: { status: "clear" },
   store: { mode: "ready", version: 2, revision: 0, reason: null },
   recoveries: [],
-  preferences: { recoveryRetention: 20, closeBehavior: "hide", dockMode: "dock-and-menu-bar" },
+  preferences: { recoveryRetention: 20, closeBehavior: "hide", dockMode: "dock-and-menu-bar", trayDisplayMode: "aliases" },
 };
 
 const unavailableApi = new Proxy({}, { get: () => async () => { throw new Error("The native security bridge is unavailable. No account operation was performed."); } }) as ClaudeSwitcherApi;
@@ -75,10 +75,11 @@ function AddAccount({ onClose, onCapture, onOpenLogin, busy, loggedIn }: {
   </div>;
 }
 
-function SettingsView({ state, busy, blocked, onExport, onRestore, onRetention, onCloseBehavior, onDockMode }: {
+function SettingsView({ state, busy, blocked, onExport, onRestore, onRetention, onCloseBehavior, onDockMode, onTrayDisplayMode }: {
   state: AppState; busy: boolean; blocked: boolean;
   onExport(): void; onRestore(id: string): void; onRetention(value: number): void;
   onCloseBehavior(value: "hide" | "quit"): void; onDockMode(value: "dock-and-menu-bar" | "menu-bar-only"): void;
+  onTrayDisplayMode(value: "aliases" | "numbered"): void;
 }) {
   return <>
     <div className="page-heading">
@@ -94,6 +95,7 @@ function SettingsView({ state, busy, blocked, onExport, onRestore, onRetention, 
       <div><label htmlFor="recovery-retention">Recovery retention</label><select id="recovery-retention" disabled={busy || blocked} value={state.preferences.recoveryRetention} onChange={(event) => onRetention(Number(event.target.value))}>{[5, 10, 20, 50, 100].map((value) => <option key={value} value={value}>{value} points</option>)}</select></div>
       <div><label htmlFor="close-behavior">Closing the window</label><select id="close-behavior" disabled={busy || blocked} value={state.preferences.closeBehavior} onChange={(event) => onCloseBehavior(event.target.value as "hide" | "quit")}><option value="hide">Keep running in the menu bar</option><option value="quit">Quit Claude Switcher</option></select></div>
       {state.security.platform === "darwin" && <div><label htmlFor="dock-mode">macOS presence</label><select id="dock-mode" disabled={busy || blocked} value={state.preferences.dockMode} onChange={(event) => onDockMode(event.target.value as "dock-and-menu-bar" | "menu-bar-only")}><option value="dock-and-menu-bar">Dock and menu bar</option><option value="menu-bar-only">Menu bar only</option></select></div>}
+      <div><label htmlFor="tray-display-mode">Menu bar profile labels</label><select id="tray-display-mode" disabled={busy || blocked} value={state.preferences.trayDisplayMode} onChange={(event) => onTrayDisplayMode(event.target.value as "aliases" | "numbered")}><option value="aliases">Show aliases</option><option value="numbered">Use numbered profiles</option></select></div>
       {state.security.remediation && <p>{state.security.remediation}</p>}
       <p>Claude Switcher stores encrypted credential snapshots and recovery records in Electron's OS-backed secure storage. Activation is verified and automatically rolled back on failure.</p>
     </section>
@@ -154,6 +156,7 @@ export default function App() {
   const setRecoveryRetention = (value: number) => { void run(() => api.setRecoveryRetention(value), "Recovery retention updated."); };
   const setCloseBehavior = (value: "hide" | "quit") => { void run(() => api.setCloseBehavior(value), "Window behavior updated."); };
   const setDockMode = (value: "dock-and-menu-bar" | "menu-bar-only") => { void run(() => api.setDockMode(value), "macOS presence updated."); };
+  const setTrayDisplayMode = (value: "aliases" | "numbered") => { void run(() => api.setTrayDisplayMode(value), "Menu bar privacy updated."); };
 
   return <main className="app-shell">
     <header className="titlebar"><Logo /><span className="titlebar-note">Local account manager</span></header>
@@ -183,7 +186,7 @@ export default function App() {
         <section className="recent"><h2>Recent activity</h2>{state.activity.length ? state.activity.slice(0, 4).map((item) => <div className="activity-row" key={item.id}><Clock3 /><span><strong>{item.alias}</strong> {item.type}</span><time>{relativeTime(item.at)}</time></div>) : <div className="activity-empty"><Clock3 /><span><strong>No recent activity</strong>Account switches will appear here.</span></div>}</section>
       </>}
       {tab === "activity" && <><div className="page-heading"><div><h1>Activity</h1><p>A local audit trail of account profile actions.</p></div></div><section className="activity-page">{state.activity.length ? state.activity.map((item) => <div className="activity-row" key={item.id}><Clock3 /><span><strong>{item.alias}</strong> {item.type}</span><time>{new Date(item.at).toLocaleString()}</time></div>) : <div className="empty"><ActivityIcon /><strong>No activity recorded</strong><span>Your profile actions will be recorded locally.</span></div>}</section></>}
-      {tab === "settings" && <SettingsView state={state} busy={busy} blocked={mutationsBlocked} onExport={exportDiagnostics} onRestore={restoreRecovery} onRetention={setRecoveryRetention} onCloseBehavior={setCloseBehavior} onDockMode={setDockMode} />}
+      {tab === "settings" && <SettingsView state={state} busy={busy} blocked={mutationsBlocked} onExport={exportDiagnostics} onRestore={restoreRecovery} onRetention={setRecoveryRetention} onCloseBehavior={setCloseBehavior} onDockMode={setDockMode} onTrayDisplayMode={setTrayDisplayMode} />}
     </section>
     {addOpen && <AddAccount onClose={() => setAddOpen(false)} onCapture={capture} onOpenLogin={openLogin} busy={busy || mutationsBlocked} loggedIn={state.claude.loggedIn} />}
   </main>;
