@@ -73,3 +73,5 @@ The initial `v0.2.0 — Reliable Switching` issues are:
 - [CS-016 threat-model review](https://github.com/wroadd/claude-switcher/issues/9)
 
 The bounded parity discovery set is [DISC-001 API-key sessions](https://github.com/wroadd/claude-switcher/issues/10), [DISC-002 documented usage/quota data](https://github.com/wroadd/claude-switcher/issues/11), and [DISC-003 warm-up behavior](https://github.com/wroadd/claude-switcher/issues/12).
+
+The first executable `v0.4.0 — Native Desktop Workflow` slice is [CS-030 native tray switching and guarded desktop lifecycle](https://github.com/wroadd/claude-switcher/issues/21). Its implementation can complete before manual platform validation, but the milestone release gate cannot.

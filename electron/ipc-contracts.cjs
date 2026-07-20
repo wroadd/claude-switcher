@@ -5,6 +5,8 @@ const CHANNELS = Object.freeze({
   diagnostics: "diagnostics:export",
   retryRecovery: "recovery:retry",
   retention: "settings:recovery-retention",
+  closeBehavior: "settings:close-behavior",
+  dockMode: "settings:dock-mode",
 });
 
 function exactObject(value, keys) {
@@ -36,6 +38,16 @@ function parseRequest(channel, value) {
   if (channel === CHANNELS.retention) {
     exactObject(value, ["value"]);
     if (!Number.isSafeInteger(value.value) || value.value < 5 || value.value > 100) throw contractError("INVALID_RETENTION", "Recovery retention must be between 5 and 100.");
+    return { value: value.value };
+  }
+  if (channel === CHANNELS.closeBehavior) {
+    exactObject(value, ["value"]);
+    if (!["hide", "quit"].includes(value.value)) throw contractError("INVALID_CLOSE_BEHAVIOR", "Invalid close behavior.");
+    return { value: value.value };
+  }
+  if (channel === CHANNELS.dockMode) {
+    exactObject(value, ["value"]);
+    if (!["dock-and-menu-bar", "menu-bar-only"].includes(value.value)) throw contractError("INVALID_DOCK_MODE", "Invalid Dock mode.");
     return { value: value.value };
   }
   throw contractError("UNKNOWN_CHANNEL", "Unknown operation.");

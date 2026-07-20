@@ -26,7 +26,7 @@ Version `0.1.0` is an MVP for OAuth/subscription accounts. It provides:
 - local rename, remove, and activity-history operations;
 - a guided launcher for the official `claude auth login` flow.
 
-The development branch now contains the unreleased `v0.2.0 — Reliable Switching` core: a versioned consolidated store, encrypted recovery records, a journaled activation coordinator, post-write identity verification, automatic rollback, strict IPC validation, and fail-closed Linux/process policies. Real-platform recovery drills and restore UI remain release gates.
+The development branch now contains the unreleased `v0.2.0 — Reliable Switching` core: a versioned consolidated store, encrypted recovery records, a journaled activation coordinator, post-write identity verification, automatic rollback, strict IPC validation, and fail-closed Linux/process policies. It also includes the first `v0.4.0 — Native Desktop Workflow` slice: a native menu-bar/tray icon, alias-only profile switching, close-to-background behavior, and a guarded macOS menu-bar-only mode. Real-platform recovery and native lifecycle drills remain release gates.
 
 API-key profiles are not included in this release. Persisting an API key in shell or Claude settings would expose it as plaintext; the feature is deliberately deferred until a secure activation model is available.
 
@@ -68,6 +68,8 @@ Artifacts are written to `release/`.
 4. Open the official login flow again, authenticate the next account, and capture it.
 5. Close all running Claude Code sessions before activating another saved account.
 
+Saved profiles can also be selected from the native menu-bar/tray icon. Tray activation uses the same process guard, encrypted recovery record, identity verification, and rollback coordinator as the main window. The Settings page controls whether closing hides or quits the app and, on macOS, whether the Dock icon remains visible.
+
 Claude Switcher never asks for your Claude password. OAuth is always handled by the official Claude Code CLI.
 
 ## Security model
@@ -87,6 +89,7 @@ See [SECURITY.md](SECURITY.md) for the threat model and reporting process.
 - [Recovery runbook](docs/RECOVERY.md)
 - [Compatibility matrix](docs/COMPATIBILITY.md)
 - [Development guide](docs/DEVELOPMENT.md)
+- [Verification status](docs/VERIFICATION_STATUS.md)
 - [Product roadmap](docs/ROADMAP.md)
 - [Project management](docs/PROJECT_MANAGEMENT.md)
 - [Contributing](CONTRIBUTING.md)
