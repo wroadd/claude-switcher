@@ -18,7 +18,7 @@ function fixture(overrides = {}) {
       { id: "work-id", alias: "Work", email: "wo•••@company.com", active: false },
     ],
     store: { mode: "ready" }, recovery: { status: "clear" }, security: { encryptionAvailable: true },
-    preferences: { dockMode: "dock-and-menu-bar" },
+    preferences: { dockMode: "dock-and-menu-bar", trayDisplayMode: "aliases" },
   };
   const calls = { activated: [], shown: 0, quit: 0, dock: [] };
   const controller = createTrayController({
@@ -41,7 +41,8 @@ test("native tray exposes alias-only safe profile switching", async () => {
   assert.equal(f.image.template, true);
   assert.equal(tray.tooltip, "Claude Switcher — Personal");
   assert.equal(JSON.stringify(tray.menu).includes("example.com"), false);
-  const work = tray.menu.find((item) => item.label === "Work");
+  const switchMenu = tray.menu.find((item) => item.label === "Switch profile");
+  const work = switchMenu.submenu.find((item) => item.label === "Work");
   work.click();
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(f.calls.activated, ["work-id"]);
@@ -53,7 +54,26 @@ test("tray blocks account switching when recovery requires attention", async () 
   const f = fixture();
   f.state.recovery.status = "recovery-required";
   await f.controller.start();
-  assert.equal(f.trays[0].menu.find((item) => item.label === "Work").enabled, false);
+  const switchMenu = f.trays[0].menu.find((item) => item.label === "Switch profile");
+  assert.equal(switchMenu.submenu.find((item) => item.label === "Work").enabled, false);
+});
+
+test("numbered privacy mode hides aliases and keeps activation bound to stable profile ids", async () => {
+  const f = fixture();
+  f.state.preferences.trayDisplayMode = "numbered";
+  await f.controller.start();
+  const tray = f.trays[0];
+  const serialized = JSON.stringify(tray.menu);
+  assert.equal(serialized.includes("Personal"), false);
+  assert.equal(serialized.includes("Work"), false);
+  assert.equal(serialized.includes("example.com"), false);
+  assert.equal(tray.tooltip, "Claude Switcher");
+  assert.equal(tray.menu[0].label, "Active: Profile 1");
+  const profiles = tray.menu.find((item) => item.label === "Switch profile").submenu;
+  assert.deepEqual(profiles.map((item) => item.label), ["Profile 1", "Profile 2"]);
+  profiles[1].click();
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(f.calls.activated, ["work-id"]);
 });
 
 test("macOS tray can restore the Dock entry point", async () => {

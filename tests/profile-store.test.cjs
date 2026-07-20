@@ -29,7 +29,7 @@ test("profile store encrypts secrets and maintains one active account", async (t
   assert.ok(!storeText.includes("one@example.com"));
   assert.equal((await store.secret(metadata.accounts[0].id)).status.email, "one@example.com");
   assert.equal(metadata.version, 2);
-  assert.deepEqual(metadata.preferences, { recoveryRetention: 20, closeBehavior: "hide", dockMode: "dock-and-menu-bar" });
+  assert.deepEqual(metadata.preferences, { recoveryRetention: 20, closeBehavior: "hide", dockMode: "dock-and-menu-bar", trayDisplayMode: "aliases" });
   assert.equal(metadata.revision, 2);
 });
 
@@ -101,6 +101,20 @@ test("desktop lifecycle preferences are validated and persisted", async (t) => {
   const store = new ProfileStore(dir, fakeSafeStorage);
   await store.setCloseBehavior("quit");
   await store.setDockMode("menu-bar-only");
-  assert.deepEqual((await store.metadata()).preferences, { recoveryRetention: 20, closeBehavior: "quit", dockMode: "menu-bar-only" });
+  await store.setTrayDisplayMode("numbered");
+  assert.deepEqual((await store.metadata()).preferences, { recoveryRetention: 20, closeBehavior: "quit", dockMode: "menu-bar-only", trayDisplayMode: "numbered" });
   await assert.rejects(() => store.setDockMode("hidden"), /Invalid Dock mode/);
+  await assert.rejects(() => store.setTrayDisplayMode("emails"), /Invalid tray display mode/);
+});
+
+test("existing v2 stores safely default to alias tray labels", async (t) => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "claude-switcher-test-"));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const store = new ProfileStore(dir, fakeSafeStorage);
+  await store.add("Personal", bundle("one@example.com"));
+  const storePath = path.join(dir, "store.json");
+  const persisted = JSON.parse(await fs.readFile(storePath, "utf8"));
+  delete persisted.preferences.trayDisplayMode;
+  await fs.writeFile(storePath, JSON.stringify(persisted));
+  assert.equal((await new ProfileStore(dir, fakeSafeStorage).metadata()).preferences.trayDisplayMode, "aliases");
 });

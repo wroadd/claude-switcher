@@ -6,7 +6,7 @@ This file separates repeatable automated evidence from checks that require a rea
 
 As of 2026-07-20:
 
-- 52 Node tests cover the activation coordinator, rollback/recovery, storage, IPC, diagnostics, security policy, desktop lifecycle, native tray menu model, and empty-icon fail-closed behavior;
+- 54 Node tests cover the activation coordinator, rollback/recovery, storage, IPC, diagnostics, security policy, desktop lifecycle, compact native tray menu model, privacy display modes, and empty-icon fail-closed behavior;
 - TypeScript checking and the Vite production build pass;
 - the built renderer passes the credential-canary artifact scan;
 - the isolated Electron main/renderer security smoke passes locally;

@@ -11,7 +11,7 @@ const MAX_RECOVERY_PLAINTEXT_BYTES = 24 * 1024 * 1024;
 const MAX_RECOVERY_FILE_BYTES = 40 * 1024 * 1024;
 const RECOVERY_ID = /^[a-zA-Z0-9_.-]{1,200}$/;
 const JOURNAL_PHASES = new Set(["prepared", "applied", "verified", "metadata-committed", "rolling-back", "recovery-required"]);
-const DEFAULT_PREFERENCES = Object.freeze({ recoveryRetention: 20, closeBehavior: "hide", dockMode: "dock-and-menu-bar" });
+const DEFAULT_PREFERENCES = Object.freeze({ recoveryRetention: 20, closeBehavior: "hide", dockMode: "dock-and-menu-bar", trayDisplayMode: "aliases" });
 
 function emptyState() {
   return {
@@ -46,7 +46,8 @@ function validateState(state) {
   state.preferences.recoveryRetention ??= DEFAULT_PREFERENCES.recoveryRetention;
   state.preferences.closeBehavior ??= DEFAULT_PREFERENCES.closeBehavior;
   state.preferences.dockMode ??= DEFAULT_PREFERENCES.dockMode;
-  if (!Number.isSafeInteger(state.preferences.recoveryRetention) || state.preferences.recoveryRetention < 5 || state.preferences.recoveryRetention > 100 || !["hide", "quit"].includes(state.preferences.closeBehavior) || !["dock-and-menu-bar", "menu-bar-only"].includes(state.preferences.dockMode)) throw new Error("Invalid store preferences.");
+  state.preferences.trayDisplayMode ??= DEFAULT_PREFERENCES.trayDisplayMode;
+  if (!Number.isSafeInteger(state.preferences.recoveryRetention) || state.preferences.recoveryRetention < 5 || state.preferences.recoveryRetention > 100 || !["hide", "quit"].includes(state.preferences.closeBehavior) || !["dock-and-menu-bar", "menu-bar-only"].includes(state.preferences.dockMode) || !["aliases", "numbered"].includes(state.preferences.trayDisplayMode)) throw new Error("Invalid store preferences.");
 
   const ids = new Set();
   let activeCount = 0;
@@ -356,6 +357,16 @@ class ProfileStore {
       if (!["dock-and-menu-bar", "menu-bar-only"].includes(value)) throw new Error("Invalid Dock mode.");
       const state = await this.readState();
       state.preferences.dockMode = value;
+      await this.writeState(state);
+      return this.metadata();
+    });
+  }
+
+  async setTrayDisplayMode(value) {
+    if (!["aliases", "numbered"].includes(value)) throw new Error("Invalid tray display mode.");
+    return this.withMutation(async () => {
+      const state = await this.readState();
+      state.preferences.trayDisplayMode = value;
       await this.writeState(state);
       return this.metadata();
     });
