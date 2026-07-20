@@ -12,6 +12,7 @@ This matrix separates automated evidence from real-platform release gates. A gre
 | KWallet | `kwallet`, `kwallet5`, and `kwallet6` are accepted | KDE locked/unavailable/unlocked capture and recovery | Human gate |
 | Store v1 → v2 | Migration, ciphertext preservation, masked metadata, future read-only, and corruption quarantine tests | Upgrade copy of a redacted/test fixture from the released app | Ready for beta drill |
 | Activation/recovery | Success, rollback, fail-closed process uncertainty, crash-after-commit, manual restore, and integrity tests | Clean-machine process race and credential-service failure drill | Human gate |
+| Claude process guard | Synthetic direct-binary, Node-hosted, malformed-output, self-exclusion, and probe-failure fixtures for POSIX and Windows | Direct and package-manager-launched Claude Code sessions on macOS, Windows, and Linux | Human gate |
 | Diagnostics | Metadata allowlist, pseudonymization, canary/path/email/token refusal, atomic `0600` export tests | Inspect exports from each packaged platform | Human gate |
 | Distribution authenticity | Packaging workflow exists | Apple/Windows signing identities, notarization, signature verification | External gate; v0.3 |
 

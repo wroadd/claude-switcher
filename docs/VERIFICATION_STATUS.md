@@ -6,7 +6,7 @@ This file separates repeatable automated evidence from checks that require a rea
 
 As of 2026-07-20:
 
-- 54 Node tests cover the activation coordinator, rollback/recovery, storage, IPC, diagnostics, security policy, desktop lifecycle, compact native tray menu model, privacy display modes, and empty-icon fail-closed behavior;
+- 61 Node tests cover the activation coordinator, rollback/recovery, storage, IPC, diagnostics, security policy, tri-state process detection, desktop lifecycle, compact native tray menu model, privacy display modes, and empty-icon fail-closed behavior;
 - TypeScript checking and the Vite production build pass;
 - the built renderer passes the credential-canary artifact scan;
 - the isolated Electron main/renderer security smoke passes locally;
@@ -24,6 +24,7 @@ The following checks are intentionally deferred because suitable test machines, 
 
 - visually confirm the 1×/2× macOS Template icon in light and dark menu bars;
 - activate tester-owned profiles through the native menu and verify the active Claude identity;
+- verify direct and package-manager-launched Claude Code process detection on macOS, Windows, and Linux;
 - verify close-to-background, reopen, explicit quit, login-item interaction, and macOS Dock/menu-bar-only transitions;
 - run rollback and interrupted-activation drills against a disposable macOS Keychain item;
 - repeat file-backed activation/recovery drills on supported Windows and Linux desktop/keyring combinations;

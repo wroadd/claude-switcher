@@ -4,6 +4,7 @@ const fs = require("node:fs/promises");
 const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const { probeClaudeProcesses } = require("./process-probe.cjs");
 
 const execFileAsync = promisify(execFile);
 const KEYCHAIN_SERVICE = "Claude Code-credentials";
@@ -160,24 +161,6 @@ async function captureCredentialBundle() {
     capturedAt: current.capturedAt,
     status: current.status,
   };
-}
-
-async function probeClaudeProcesses() {
-  if (process.platform === "win32") {
-    try {
-      const { stdout } = await execFileAsync("tasklist", ["/FI", "IMAGENAME eq claude.exe", "/NH"], { timeout: 5000 });
-      return /claude\.exe/i.test(stdout) ? { status: "blocked" } : { status: "clear" };
-    } catch { return { status: "unknown", code: "PROCESS_PROBE_FAILED" }; }
-  }
-  try {
-    const { stdout } = await execFileAsync("ps", ["-axo", "pid=,comm=,args="], { timeout: 5000, maxBuffer: 4 * 1024 * 1024 });
-    const blocked = stdout.split("\n").some((line) => {
-      const normalized = line.trim().toLowerCase();
-      if (!normalized || normalized.includes("claude-switcher")) return false;
-      return /(^|[\s/])claude(?:\.exe)?(?:\s|$)/.test(normalized) || /@anthropic-ai\/claude-code/.test(normalized);
-    });
-    return blocked ? { status: "blocked" } : { status: "clear" };
-  } catch { return { status: "unknown", code: "PROCESS_PROBE_FAILED" }; }
 }
 
 async function hasRunningClaude() {

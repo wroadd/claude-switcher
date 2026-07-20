@@ -43,7 +43,7 @@ An attacker controlling the logged-in OS session, instrumenting the main process
 | Renderer sends coerced, oversized, or path-like IPC | Exact envelope validation and authorized sender tests | Accepted |
 | Remote/dev page receives privileged preload | Packaged builds ignore dev URL; dev origin is exact loopback; navigation/windows/webviews denied | CSP remains regression-tested |
 | Linux silently uses `basic_text` | Backend inspection blocks writes unless libsecret/KWallet is selected | Real desktop sessions are a human gate |
-| Process inspection fails and switching proceeds | Tri-state probe; `unknown` blocks activation | Signatures require compatibility tests |
+| Process inspection fails or misses a hosted Claude process | Bounded tri-state platform probes, pure direct/Node-hosted classifiers, stable non-sensitive failures; `blocked` and `unknown` both stop mutation | Tester-owned launch-pattern checks remain a release gate |
 | Wrong account is shown active | CLI identity matches before metadata commit; startup reconciles journal | Unknown CLI status fails closed |
 | Corrupt/future store is overwritten | Corruption is quarantined; future schema opens read-only; mutations block | Restore/import UI remains planned |
 | Secrets enter logs, errors, or artifacts | Stable errors, metadata-only journals/manifests, canary tests/build scan | Same-process memory inspection is out of scope |

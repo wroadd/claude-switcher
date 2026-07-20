@@ -181,6 +181,16 @@ test("process probe uncertainty fails closed before mutation", async (t) => {
   assert.equal(f.current().status.email, "previous@example.com");
 });
 
+test("a detected Claude Code process blocks activation before mutation", async (t) => {
+  const f = await fixture(t);
+  f.adapter.probeClaudeProcesses = async () => ({ status: "blocked" });
+  await assert.rejects(
+    () => new ActivationCoordinator({ store: f.store, adapter: f.adapter }).activate(f.targetId),
+    (error) => error.code === "CLAUDE_RUNNING",
+  );
+  assert.equal(f.current().status.email, "previous@example.com");
+});
+
 test("coordinator rejects adapters that cannot verify exact credential state", async (t) => {
   const f = await fixture(t);
   delete f.adapter.credentialStateMatches;
