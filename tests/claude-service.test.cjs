@@ -80,8 +80,10 @@ test("file adapter exposes the credential/root mutation boundary for exact rollb
   await restoreCredentialState(previous);
   assert.equal(await fs.readFile(path.join(dir, ".credentials.json"), "utf8"), credentials);
   assert.equal(await fs.readFile(path.join(dir, ".claude.json"), "utf8"), root);
-  assert.equal((await fs.stat(path.join(dir, ".credentials.json"))).mode & 0o777, 0o640);
-  assert.equal((await fs.stat(path.join(dir, ".claude.json"))).mode & 0o777, 0o640);
+  if (process.platform !== "win32") {
+    assert.equal((await fs.stat(path.join(dir, ".credentials.json"))).mode & 0o777, 0o640);
+    assert.equal((await fs.stat(path.join(dir, ".claude.json"))).mode & 0o777, 0o640);
+  }
 });
 
 test("atomic credential write removes plaintext temp file when rename fails", async (t) => {
